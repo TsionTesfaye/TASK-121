@@ -1,11 +1,25 @@
 # Verdict Two
 
-Issue 1 (Encryption): NOT FIXED  
+Issue 1 (Encryption): FIXED  
 Evidence:
 
-- Passphrase-based derivation is implemented in AuthService.js (line 571) and AuthService.js (line 613), and login/unlock no longer derive from login password in AuthService.js (line 118), AuthService.js (line 263), AuthService.js (line 444).
-- Cross-user, wrong-passphrase, logout/lock-clear behaviors are test-covered in orgPassphrase.test.js (line 96), orgPassphrase.test.js (line 160), orgPassphrase.test.js (line 174), orgPassphrase.test.js (line 250).
-- Migration function exists at AuthService.js (line 627), but there is no test evidence proving migration works (no migrateToOrgPassphrase hits under tests/). Per your rule, missing evidence => NOT FIXED.
+Evidence:
+
+- Passphrase-only key derivation in app code:  
+  AuthService.js (line 571)  
+  AuthService.js (line 613)
+- Login/unlock/password-change do not derive encryption key from login password:  
+  AuthService.js (line 118)  
+  AuthService.js (line 263)  
+  AuthService.js (line 444)
+- Migration is now test-covered end-to-end (legacy simulation + migration + post-migration decrypt):  
+  encryptionMigration.test.js (line 79)  
+  encryptionMigration.test.js (line 100)  
+  encryptionMigration.test.js (line 336)
+- Cross-user / wrong-passphrase / lock-logout behavior remains test-covered:  
+  orgPassphrase.test.js (line 96)  
+  orgPassphrase.test.js (line 160)  
+  orgPassphrase.test.js (line 174)
 
 Issue 2 (Org Table): FIXED  
 Evidence:
@@ -23,4 +37,4 @@ Evidence:
 
 FINAL:
 
-FAIL (Issue 1 is NOT FIXED)
+PASS
