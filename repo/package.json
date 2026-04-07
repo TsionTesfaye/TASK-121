@@ -1,0 +1,33 @@
+{
+  "name": "retailops-console",
+  "version": "1.0.0",
+  "description": "RetailOps Insight & Compliance Console — fully offline Svelte SPA",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "svelte": "^4.2.12"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^3.1.0",
+    "@testing-library/jest-dom": "^6.4.2",
+    "@testing-library/svelte": "^4.2.2",
+    "@testing-library/user-event": "^14.5.2",
+    "@vitest/coverage-v8": "^1.6.0",
+    "@vitest/ui": "^1.6.0",
+    "fake-indexeddb": "^5.0.0",
+    "jsdom": "^24.0.0",
+    "vite": "^5.2.0",
+    "vitest": "^1.6.0"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}

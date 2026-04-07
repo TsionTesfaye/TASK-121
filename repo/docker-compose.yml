@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  # Runs the full test suite (unit, integration, simulation, E2E, component).
+  test:
+    build: .
+    command: npm run test
+
+  # Starts the Vite development server on port 5173.
+  dev:
+    build: .
+    command: npm run dev -- --host 0.0.0.0
+    ports:
+      - "5173:5173"
