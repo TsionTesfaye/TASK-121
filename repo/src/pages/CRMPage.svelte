@@ -5,10 +5,26 @@
   import { cryptoService } from '../services/CryptoService.js';
   import { currentUser, currentRole, isLocked } from '../app/stores/auth.js';
   import { orgTree, resolveOrgContext } from '../app/stores/org.js';
-  import { showToast } from '../app/stores/ui.js';
+  import { showToast, tableColumnLayouts } from '../app/stores/ui.js';
   import { MEMBERSHIP_TIERS, ROLES, VALIDATION } from '../utils/constants.js';
+  import Table from '../components/Table.svelte';
 
   const tiers = Object.values(MEMBERSHIP_TIERS);
+
+  const TICKET_COLUMNS = [
+    { key: 'subject', label: 'Subject', sortable: true },
+    { key: 'status', label: 'Status', sortable: true },
+    { key: 'priority', label: 'Priority', sortable: true },
+    { key: 'createdAt', label: 'Created', sortable: true },
+  ];
+
+  $: ticketHiddenColumns = (() => {
+    const saved = $tableColumnLayouts['tickets'];
+    if (!saved) return [];
+    return TICKET_COLUMNS.filter((c) => !saved.includes(c.key)).map((c) => c.key);
+  })();
+
+  $: userId = $currentUser?.id ?? '';
 
   let customers = [];
   let selectedCustomer = null;
@@ -449,30 +465,24 @@
         <!-- Tickets -->
         <section class="tickets-section">
           <h4>Support Tickets</h4>
-          {#if tickets.length === 0}
-            <p class="empty-hint">No tickets.</p>
-          {:else}
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Subject</th>
-                  <th>Status</th>
-                  <th>Priority</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each tickets as t}
-                  <tr>
-                    <td>{t.subject}</td>
-                    <td><span class="badge badge--status">{t.status}</span></td>
-                    <td>{t.priority}</td>
-                    <td>{formatDate(t.createdAt)}</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          {/if}
+          <Table
+            columns={TICKET_COLUMNS}
+            rows={tickets}
+            empty="No tickets."
+            hiddenColumns={ticketHiddenColumns}
+            tableKey="tickets"
+            {userId}
+          >
+            <span slot="cell" let:row let:col>
+              {#if col.key === 'status'}
+                <span class="badge badge--status">{row.status}</span>
+              {:else if col.key === 'createdAt'}
+                {formatDate(row.createdAt)}
+              {:else}
+                {row[col.key] ?? '—'}
+              {/if}
+            </span>
+          </Table>
         </section>
 
         <!-- Version history -->

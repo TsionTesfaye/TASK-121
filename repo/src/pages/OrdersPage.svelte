@@ -3,15 +3,31 @@
   import { customerService } from '../services/CustomerService.js';
   import { currentUser } from '../app/stores/auth.js';
   import { orgTree, resolveOrgContext } from '../app/stores/org.js';
-  import { showToast } from '../app/stores/ui.js';
+  import { showToast, tableColumnLayouts } from '../app/stores/ui.js';
   import { ORDER_STATUSES, ORDER_TRANSITIONS } from '../utils/constants.js';
+  import Table from '../components/Table.svelte';
 
   const statuses = Object.values(ORDER_STATUSES);
+
+  const ORDER_COLUMNS = [
+    { key: 'id', label: 'Order ID', sortable: true },
+    { key: 'status', label: 'Status', sortable: true },
+    { key: 'customerId', label: 'Customer', sortable: true },
+    { key: 'createdAt', label: 'Created', sortable: true },
+  ];
 
   let orders = [];
   let selectedOrder = null;
   let orderEvents = [];
   let filterStatus = '';
+
+  $: orderHiddenColumns = (() => {
+    const saved = $tableColumnLayouts['orders'];
+    if (!saved) return [];
+    return ORDER_COLUMNS.filter((c) => !saved.includes(c.key)).map((c) => c.key);
+  })();
+
+  $: userId = $currentUser?.id ?? '';
 
   // New order form
   let showNewForm = false;
@@ -131,23 +147,28 @@
   <div class="layout">
     <!-- Order list -->
     <aside class="order-list">
-      {#if filteredOrders.length === 0}
-        <p class="empty-hint">No orders.</p>
-      {:else}
-        {#each filteredOrders as o}
-          <button
-            class="order-row"
-            class:selected={selectedOrder?.id === o.id}
-            on:click={() => selectOrder(o)}
-          >
-            <span class="order-id">{o.id.slice(0, 8)}…</span>
-            <span class="status-badge" style="background:{statusColor(o.status)}">{o.status}</span>
-            {#if o.restrictionFlags?.hasAllergies || o.restrictionFlags?.hasMaterialRestrictions}
-              <span class="restriction-flag" title="Restriction flags">⚠</span>
-            {/if}
-          </button>
-        {/each}
-      {/if}
+      <Table
+        columns={ORDER_COLUMNS}
+        rows={filteredOrders}
+        empty="No orders."
+        hiddenColumns={orderHiddenColumns}
+        tableKey="orders"
+        {userId}
+      >
+        <span slot="cell" let:row let:col>
+          {#if col.key === 'id'}
+            <button class="order-link" class:selected={selectedOrder?.id === row.id} on:click={() => selectOrder(row)}>
+              {row.id.slice(0, 8)}…
+            </button>
+          {:else if col.key === 'status'}
+            <span class="status-badge" style="background:{statusColor(row.status)}">{row.status}</span>
+          {:else if col.key === 'createdAt'}
+            {formatDate(row.createdAt)}
+          {:else}
+            {row[col.key] ?? '—'}
+          {/if}
+        </span>
+      </Table>
     </aside>
 
     <!-- Order detail -->
@@ -263,11 +284,9 @@
   .filter-label { font-size: 0.875rem; display: flex; align-items: center; gap: 0.4rem; }
   .filter-select { padding: 0.25rem 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
   .layout { display: grid; grid-template-columns: 260px 1fr; gap: 1rem; flex: 1; min-height: 0; }
-  .order-list { background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 0.75rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.25rem; }
-  .order-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 4px; border: 1px solid transparent; cursor: pointer; background: #fff; font-size: 0.8rem; text-align: left; }
-  .order-row:hover { background: #f1f5f9; }
-  .order-row.selected { background: #eff6ff; border-color: #bfdbfe; }
-  .order-id { font-family: monospace; flex: 1; }
+  .order-list { background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 0.75rem; overflow-y: auto; }
+  .order-link { background: none; border: none; cursor: pointer; font-family: monospace; font-size: 0.8rem; color: #2563eb; padding: 0; text-decoration: underline; }
+  .order-link.selected { font-weight: 700; }
   .status-badge { padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
   .restriction-flag { color: #d97706; font-size: 0.9rem; }
   .order-detail { background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 1.5rem; overflow-y: auto; }

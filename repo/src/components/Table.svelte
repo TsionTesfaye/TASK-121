@@ -1,12 +1,18 @@
 <script>
+  import { createEventDispatcher } from 'svelte';
+  import { saveColumnLayout } from '../app/stores/ui.js';
+
   /**
-   * Generic data table component.
+   * Generic data table component with column visibility toggle.
    *
    * Props:
-   *   columns  - Array<{ key: string; label: string; sortable?: boolean; width?: string }>
-   *   rows     - Array<object>  (each object must have a unique `id` field)
-   *   loading  - boolean
-   *   empty    - string (message shown when rows.length === 0 and !loading)
+   *   columns       - Array<{ key: string; label: string; sortable?: boolean; width?: string }>
+   *   rows          - Array<object>  (each object must have a unique `id` field)
+   *   loading       - boolean
+   *   empty         - string (message shown when rows.length === 0 and !loading)
+   *   hiddenColumns - string[]  (keys of columns to hide)
+   *   tableKey      - string (identifier for layout persistence, e.g. 'orders')
+   *   userId        - string (current user ID for scoped layout persistence)
    */
 
   /** @type {Array<{ key: string; label: string; sortable?: boolean; width?: string }>} */
@@ -21,8 +27,20 @@
   /** @type {string} */
   export let empty = 'No records found.';
 
+  /** @type {string[]} */
+  export let hiddenColumns = [];
+
+  /** @type {string} */
+  export let tableKey = '';
+
+  /** @type {string} */
+  export let userId = '';
+
+  const dispatch = createEventDispatcher();
+
   let sortKey = '';
   let sortDir = 'asc'; // 'asc' | 'desc'
+  let showColumnMenu = false;
 
   function toggleSort(key) {
     if (sortKey === key) {
@@ -32,6 +50,21 @@
       sortDir = 'asc';
     }
   }
+
+  function toggleColumn(key) {
+    if (hiddenColumns.includes(key)) {
+      hiddenColumns = hiddenColumns.filter((k) => k !== key);
+    } else {
+      hiddenColumns = [...hiddenColumns, key];
+    }
+    const vis = columns.filter((c) => !hiddenColumns.includes(c.key)).map((c) => c.key);
+    if (tableKey) {
+      saveColumnLayout(tableKey, vis, userId);
+    }
+    dispatch('layoutchange', { tableKey, visibleColumns: vis });
+  }
+
+  $: visibleColumns = columns.filter((c) => !hiddenColumns.includes(c.key));
 
   $: sortedRows = sortKey
     ? [...rows].sort((a, b) => {
@@ -44,10 +77,31 @@
 </script>
 
 <div class="table-wrap" role="region" aria-label="Data table">
+  {#if tableKey}
+    <div class="table-toolbar">
+      <button class="column-toggle-btn" on:click={() => showColumnMenu = !showColumnMenu} aria-label="Toggle columns">
+        Columns
+      </button>
+      {#if showColumnMenu}
+        <div class="column-menu" role="menu" aria-label="Column visibility">
+          {#each columns as col (col.key)}
+            <label class="column-menu-item">
+              <input
+                type="checkbox"
+                checked={!hiddenColumns.includes(col.key)}
+                on:change={() => toggleColumn(col.key)}
+              />
+              {col.label}
+            </label>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
   <table class="table">
     <thead>
       <tr>
-        {#each columns as col (col.key)}
+        {#each visibleColumns as col (col.key)}
           <th
             class="th"
             style={col.width ? `width:${col.width}` : ''}
@@ -74,20 +128,20 @@
     <tbody>
       {#if loading}
         <tr>
-          <td colspan={columns.length + ($$slots.actions ? 1 : 0)} class="td td--center">
+          <td colspan={visibleColumns.length + ($$slots.actions ? 1 : 0)} class="td td--center">
             <span class="spinner" aria-label="Loading"></span>
           </td>
         </tr>
       {:else if sortedRows.length === 0}
         <tr>
-          <td colspan={columns.length + ($$slots.actions ? 1 : 0)} class="td td--empty">
+          <td colspan={visibleColumns.length + ($$slots.actions ? 1 : 0)} class="td td--empty">
             {empty}
           </td>
         </tr>
       {:else}
         {#each sortedRows as row (row.id)}
           <tr class="tr">
-            {#each columns as col (col.key)}
+            {#each visibleColumns as col (col.key)}
               <td class="td">
                 <slot name="cell" {row} {col}>
                   {row[col.key] ?? '—'}
@@ -112,7 +166,52 @@
     overflow-x: auto;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
+    position: relative;
   }
+
+  .table-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0.5rem 0.75rem;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    position: relative;
+  }
+
+  .column-toggle-btn {
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    color: #374151;
+  }
+  .column-toggle-btn:hover { background: #f3f4f6; }
+
+  .column-menu {
+    position: absolute;
+    right: 0.75rem;
+    top: 100%;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    padding: 0.5rem;
+    z-index: 20;
+    min-width: 160px;
+  }
+
+  .column-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.4rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+    border-radius: 3px;
+  }
+  .column-menu-item:hover { background: #f1f5f9; }
 
   .table {
     width: 100%;

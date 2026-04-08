@@ -4,11 +4,29 @@
   import { eventDispatcherService } from '../services/EventDispatcherService.js';
   import { currentUser, currentRole } from '../app/stores/auth.js';
   import { orgTree, resolveOrgContext } from '../app/stores/org.js';
-  import { showToast } from '../app/stores/ui.js';
+  import { showToast, tableColumnLayouts } from '../app/stores/ui.js';
   import { QUEUE_STATUSES, EVENT_TYPES, ROLES } from '../utils/constants.js';
+  import Table from '../components/Table.svelte';
 
   const tabs = ['inbox', 'queue', 'templates', 'channels', 'subscriptions', 'simulate'];
   let activeTab = 'inbox';
+
+  const QUEUE_COLUMNS = [
+    { key: 'status', label: 'Status', sortable: true },
+    { key: 'recipientUserId', label: 'Recipient' },
+    { key: 'templateId', label: 'Template' },
+    { key: 'retryCount', label: 'Retries' },
+    { key: 'createdAt', label: 'Created', sortable: true },
+    { key: 'failureReason', label: 'Failure Reason' },
+  ];
+
+  $: queueHiddenColumns = (() => {
+    const saved = $tableColumnLayouts['queue'];
+    if (!saved) return [];
+    return QUEUE_COLUMNS.filter((c) => !saved.includes(c.key)).map((c) => c.key);
+  })();
+
+  $: userId = $currentUser?.id ?? '';
 
   // Inbox
   let notifications = [];
@@ -363,38 +381,37 @@
       {:else if queueItems.length === 0}
         <p class="empty-hint">No queue items.</p>
       {:else}
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Status</th>
-              <th>Recipient</th>
-              <th>Template</th>
-              <th>Retries</th>
-              <th>Created</th>
-              <th>Failure Reason</th>
-              {#if canManage}<th></th>{/if}
-            </tr>
-          </thead>
-          <tbody>
-            {#each queueItems as item}
-              <tr>
-                <td><span class="status-badge" style="background:{statusColor(item.status)}">{item.status}</span></td>
-                <td class="mono">{item.recipientUserId?.slice(0, 8)}…</td>
-                <td class="mono">{item.templateId?.slice(0, 8)}…</td>
-                <td>{item.retryCount}/{3}</td>
-                <td>{formatDate(item.createdAt)}</td>
-                <td class="failure">{item.failureReason ?? '—'}</td>
-                {#if canManage}
-                  <td>
-                    {#if item.status === 'Draft'}
-                      <button class="btn-xs" on:click={() => openRequeueModal(item)}>Requeue</button>
-                    {/if}
-                  </td>
-                {/if}
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+        <Table
+          columns={QUEUE_COLUMNS}
+          rows={queueItems}
+          empty="No queue items."
+          hiddenColumns={queueHiddenColumns}
+          tableKey="queue"
+          {userId}
+        >
+          <span slot="cell" let:row let:col>
+            {#if col.key === 'status'}
+              <span class="status-badge" style="background:{statusColor(row.status)}">{row.status}</span>
+            {:else if col.key === 'recipientUserId'}
+              <span class="mono">{row.recipientUserId?.slice(0, 8)}…</span>
+            {:else if col.key === 'templateId'}
+              <span class="mono">{row.templateId?.slice(0, 8)}…</span>
+            {:else if col.key === 'retryCount'}
+              {row.retryCount}/{3}
+            {:else if col.key === 'createdAt'}
+              {formatDate(row.createdAt)}
+            {:else if col.key === 'failureReason'}
+              <span class="failure">{row.failureReason ?? '—'}</span>
+            {:else}
+              {row[col.key] ?? '—'}
+            {/if}
+          </span>
+          <span slot="actions" let:row>
+            {#if canManage && row.status === 'Draft'}
+              <button class="btn-xs" on:click={() => openRequeueModal(row)}>Requeue</button>
+            {/if}
+          </span>
+        </Table>
       {/if}
 
     <!-- Templates -->
