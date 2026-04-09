@@ -125,16 +125,14 @@ describe('App.svelte — broadcast state sync', () => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe('Unlock restores state', () => {
-  it('unlock after lock re-derives key', async () => {
+  it('unlock after lock re-derives key via wrapped passphrase', async () => {
     authService.lockSession();
     expect(cryptoService.isUnlocked()).toBe(false);
 
     const ok = await authService.unlockSession(ADMIN_PASS);
     expect(ok).toBe(true);
     expect(authService.isLocked()).toBe(false);
-    // Screen unlock no longer derives the encryption key; need unlockProtectedData.
-    expect(cryptoService.isUnlocked()).toBe(false);
-    await authService.unlockProtectedData(ADMIN_PASS);
+    // Password unlock automatically restores encryption key via wrapped passphrase.
     expect(cryptoService.isUnlocked()).toBe(true);
   });
 });

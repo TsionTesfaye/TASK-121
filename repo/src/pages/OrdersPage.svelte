@@ -288,7 +288,6 @@
   .order-link { background: none; border: none; cursor: pointer; font-family: monospace; font-size: 0.8rem; color: #2563eb; padding: 0; text-decoration: underline; }
   .order-link.selected { font-weight: 700; }
   .status-badge { padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
-  .restriction-flag { color: #d97706; font-size: 0.9rem; }
   .order-detail { background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; padding: 1.5rem; overflow-y: auto; }
   .empty-state { display: flex; align-items: center; justify-content: center; height: 200px; color: #888; }
   .detail-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }

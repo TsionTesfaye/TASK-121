@@ -5,6 +5,7 @@ import {
   LinkedAccountRepository,
 } from '../repositories/implementations/RiskRepository.js';
 import { AppConfigRepository } from '../repositories/implementations/AppConfigRepository.js';
+import { OrgRepository } from '../repositories/implementations/OrgRepository.js';
 import { auditService } from './AuditService.js';
 import { authService } from './AuthService.js';
 import { generateId } from '../utils/idGenerator.js';
@@ -573,7 +574,6 @@ export class RiskReviewService {
     // Persist to appConfig, org-scoped. Resolve to root org ID.
     const nodeId = actor.organizationNodeId;
     if (nodeId) {
-      const { OrgRepository } = await import('../repositories/implementations/OrgRepository.js');
       const orgRepo = new OrgRepository();
       const node = await orgRepo.findById(nodeId);
       const rootOrgId = node?.organizationId ?? nodeId;

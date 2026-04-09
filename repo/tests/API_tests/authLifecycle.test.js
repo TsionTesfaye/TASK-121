@@ -114,8 +114,9 @@ describe('Auto-lock after inactivity', () => {
 // ── Unlock ────────────────────────────────────────────────────────────────────
 
 describe('Unlock session', () => {
-  it('correct password clears lock but does not re-derive key', async () => {
+  it('correct password clears lock and restores encryption key', async () => {
     await authSvc.login(ADMIN_USER, ADMIN_PASS);
+    expect(cryptoService.isUnlocked()).toBe(true);
     authSvc.lockSession();
     expect(cryptoService.isUnlocked()).toBe(false);
 
@@ -123,8 +124,8 @@ describe('Unlock session', () => {
 
     expect(ok).toBe(true);
     expect(authSvc.isLocked()).toBe(false);
-    // Screen unlock no longer derives the encryption key.
-    expect(cryptoService.isUnlocked()).toBe(false);
+    // Unlock restores encryption key via wrapped passphrase.
+    expect(cryptoService.isUnlocked()).toBe(true);
   });
 
   it('wrong password returns false without locking out permanently', async () => {

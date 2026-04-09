@@ -3,6 +3,7 @@
  * Tracks the currently selected organization node for store-scoped views.
  */
 import { writable, derived } from 'svelte/store';
+import { OrgRepository } from '../../repositories/implementations/OrgRepository.js';
 
 /** @type {import('svelte/store').Writable<object | null>} Active org root node. */
 export const selectedOrg = writable(null);
@@ -57,7 +58,6 @@ export function resolveOrgContext(user, tree) {
 export async function resolveRootOrgId(nodeId) {
   if (!nodeId) return nodeId;
   try {
-    const { OrgRepository } = await import('../../repositories/implementations/OrgRepository.js');
     const repo = new OrgRepository();
     const node = await repo.findById(nodeId);
     return node?.organizationId ?? nodeId;

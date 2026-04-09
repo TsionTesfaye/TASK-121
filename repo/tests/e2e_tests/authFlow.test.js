@@ -41,14 +41,11 @@ afterEach(() => {
 });
 
 describe('Auth flow', () => {
-  it('login with correct credentials authenticates but does NOT derive key', async () => {
+  it('login with correct credentials authenticates and auto-derives encryption key', async () => {
     const svc = new AuthService();
     const user = await svc.login(ADMIN_USER, ADMIN_PASS);
     expect(user.role).toBe(ROLES.ADMINISTRATOR);
-    // Login password is NEVER used for data encryption
-    expect(cryptoService.isUnlocked()).toBe(false);
-    // Org passphrase unlocks protected data
-    await svc.unlockProtectedData(ADMIN_PASS);
+    // Login auto-restores encryption via wrapped passphrase
     expect(cryptoService.isUnlocked()).toBe(true);
   });
 
@@ -102,20 +99,18 @@ describe('Auth flow', () => {
     expect(svc.isLocked()).toBe(true);
   });
 
-  it('unlockSession unlocks screen but does NOT derive encryption key', async () => {
+  it('unlockSession restores both screen and encryption key', async () => {
     const svc = new AuthService();
     await svc.login(ADMIN_USER, ADMIN_PASS);
+    expect(cryptoService.isUnlocked()).toBe(true);
     svc.lockSession();
     expect(cryptoService.isUnlocked()).toBe(false);
 
     const ok = await svc.unlockSession(ADMIN_PASS);
     expect(ok).toBe(true);
-    // Screen is unlocked but encryption key is NOT derived from login password
-    expect(cryptoService.isUnlocked()).toBe(false);
-    expect(svc.isLocked()).toBe(false);
-    // Must use org passphrase to unlock protected data
-    await svc.unlockProtectedData(ADMIN_PASS);
+    // Password unlock restores encryption key via wrapped passphrase
     expect(cryptoService.isUnlocked()).toBe(true);
+    expect(svc.isLocked()).toBe(false);
   });
 
   it('5 failed unlocks → session terminated (forced logout)', async () => {

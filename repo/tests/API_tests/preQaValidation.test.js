@@ -76,12 +76,13 @@ describe('Real auth flow — crypto key lifecycle (passphrase model)', () => {
     expect(dec).toBe('test data');
   });
 
-  it('login alone does NOT derive key → encrypt throws', async () => {
+  it('login auto-derives key via wrapped passphrase → encrypt works', async () => {
     await authService.logout();
     await authService.login('pq_admin', ADMIN_PASS);
-    // Login password is NEVER used for encryption
-    expect(cryptoService.isUnlocked()).toBe(false);
-    await expect(cryptoService.encrypt('anything')).rejects.toThrow(/locked/i);
+    // Login auto-restores encryption via wrapped passphrase
+    expect(cryptoService.isUnlocked()).toBe(true);
+    const enc = await cryptoService.encrypt('anything');
+    expect(enc.ciphertext).toBeTruthy();
   });
 
   it('logout clears key → re-login + passphrase → decrypt works', async () => {
@@ -312,6 +313,7 @@ describe('Self-audit — programmatic invariant verification', () => {
       'getCurrentUser', 'isUnlocked', 'clearSessionKey', 'isBootstrapped',
       'bootstrap', 'log', 'hashNewPassword', 'verifyPassword', 'deriveSessionKey',
       'deriveKeyRaw', 'setSessionKey', 'encrypt', 'decrypt', 'maskValue',
+      'wrapPassphrase', 'unwrapPassphrase', // crypto utility — no auth
       'encryptBackup', 'decryptBackup', 'deriveBackupKey', 'resolveBackupKey',
       'registerTask', 'start', 'stop', 'validateSchemaVersion',
       'loadSensitiveWordDictionary', 'getSensitiveWords', 'clearDictionary',

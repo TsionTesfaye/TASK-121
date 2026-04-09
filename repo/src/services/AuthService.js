@@ -10,9 +10,22 @@
  *   - password change with session-key rotation
  *   - account deactivation
  *   - RBAC role resolution
+ *
+ * Encryption model:
+ *   The data encryption key is derived from the org passphrase. At bootstrap the
+ *   org passphrase defaults to the admin password. The passphrase is wrapped
+ *   (encrypted) with a key derived from each user's login password and stored
+ *   per-user. On login and unlock, the wrapped passphrase is automatically
+ *   unwrapped and used to derive the session encryption key — no separate
+ *   passphrase prompt is required.
  */
 
 import { UserRepository } from '../repositories/implementations/UserRepository.js';
+import { OrgRepository } from '../repositories/implementations/OrgRepository.js';
+import { AppConfigRepository } from '../repositories/implementations/AppConfigRepository.js';
+import { LinkedAccountRepository } from '../repositories/implementations/RiskRepository.js';
+import { CustomerRepository } from '../repositories/implementations/CustomerRepository.js';
+import { decryptField, encryptField } from '../infrastructure/crypto/webCrypto.js';
 import { cryptoService } from './CryptoService.js';
 import { auditService } from './AuditService.js';
 import { generateId } from '../utils/idGenerator.js';
@@ -115,14 +128,13 @@ export class AuthService {
     };
     await this._userRepo.update(user.id, freshUser);
 
-    // Login does NOT derive the data encryption key. The encryption key is
-    // derived exclusively from the org passphrase via unlockProtectedData().
-    // This ensures the login password is never used for data encryption.
-
     this._currentUser = freshUser;
     this._isLocked = false;
     this._isGuestSession = false;
     this._unlockAttempts = 0; // reset on any successful login
+
+    // Auto-restore protected-data decryption if user has a wrapped passphrase.
+    await this._restoreEncryptionKey(freshUser, password);
 
     this._resetLockTimer();
 
@@ -259,11 +271,13 @@ export class AuthService {
       return false;
     }
 
-    // Successful unlock — reset counter, clear lock.
-    // The screen unlock does NOT derive the encryption key. Protected data
-    // remains inaccessible until unlockProtectedData(orgPassphrase) is called.
+    // Successful unlock — reset counter, clear lock, restore encryption key.
     this._unlockAttempts = 0;
     this._isLocked = false;
+
+    // Auto-restore protected-data decryption from wrapped passphrase.
+    await this._restoreEncryptionKey(user, password);
+
     this._resetLockTimer();
     broadcast(CHANNEL_NAMES.STATE, EVENT_TYPES.SESSION_UNLOCKED);
     return true;
@@ -290,7 +304,6 @@ export class AuthService {
       if (!organizationNodeId) {
         throw new Error(`Role '${role}' requires an organizationNodeId.`);
       }
-      const { OrgRepository } = await import('../repositories/implementations/OrgRepository.js');
       const orgRepo = new OrgRepository();
       const node = await orgRepo.findById(organizationNodeId);
       if (!node) {
@@ -348,7 +361,6 @@ export class AuthService {
     if (!b) throw new Error(`User '${userIdB}' not found.`);
 
     // Duplicate check (A-B == B-A)
-    const { LinkedAccountRepository } = await import('../repositories/implementations/RiskRepository.js');
     const linkRepo = new LinkedAccountRepository();
     const existingA = await linkRepo.findAllLinksForUser(userIdA);
     const isDuplicate = existingA.some(
@@ -386,7 +398,6 @@ export class AuthService {
    */
   async getLinkedAccounts(userId) {
     this._assertPermission('administrator');
-    const { LinkedAccountRepository } = await import('../repositories/implementations/RiskRepository.js');
     const linkRepo = new LinkedAccountRepository();
     return linkRepo.findAllLinksForUser(userId);
   }
@@ -399,7 +410,6 @@ export class AuthService {
    */
   async unlinkAccounts(linkId) {
     this._assertPermission('administrator');
-    const { LinkedAccountRepository } = await import('../repositories/implementations/RiskRepository.js');
     const linkRepo = new LinkedAccountRepository();
     const link = await linkRepo.findById(linkId);
     if (!link) throw new Error(`Link '${linkId}' not found.`);
@@ -414,8 +424,8 @@ export class AuthService {
 
   /**
    * Changes a user's login password.
-   * Password changes do NOT affect the data encryption key — that is derived
-   * exclusively from the org passphrase, independent of any user's login password.
+   * Re-wraps the org passphrase with the new password so that future
+   * login/unlock continues to auto-restore decryption capability.
    *
    * @param {string} userId
    * @param {string} oldPassword
@@ -434,15 +444,38 @@ export class AuthService {
 
     const { hash, salt } = await cryptoService.hashNewPassword(newPassword);
 
+    // Re-wrap the org passphrase with the new password if previously enrolled.
+    let reWrapped = {};
+    if (user.wrappedOrgPassphrase && user.wrappedOrgPassphraseIv && user.wrappingSalt) {
+      try {
+        const orgPassphrase = await cryptoService.unwrapPassphrase(
+          user.wrappedOrgPassphrase, user.wrappedOrgPassphraseIv,
+          oldPassword, user.wrappingSalt,
+        );
+        const newWrappingSalt = cryptoService.generateOrgSalt();
+        const wrapped = await cryptoService.wrapPassphrase(orgPassphrase, newPassword, newWrappingSalt);
+        reWrapped = {
+          wrappedOrgPassphrase: wrapped.ciphertext,
+          wrappedOrgPassphraseIv: wrapped.iv,
+          wrappingSalt: newWrappingSalt,
+        };
+      } catch {
+        // If unwrap fails, clear the stale wrapped passphrase.
+        reWrapped = {
+          wrappedOrgPassphrase: null,
+          wrappedOrgPassphraseIv: null,
+          wrappingSalt: null,
+        };
+      }
+    }
+
     await this._userRepo.update(userId, {
       ...user,
       passwordHash: hash,
       passwordSalt: salt,
+      ...reWrapped,
       updatedAt: Date.now(),
     });
-
-    // Password change does NOT touch the encryption key. The data encryption
-    // key is derived from the org passphrase, not the login password.
 
     await auditService.log({
       actorId: userId,
@@ -558,7 +591,6 @@ export class AuthService {
     const { hash, salt } = await cryptoService.hashNewPassword(orgPassphrase);
 
     // Update config with passphrase verifier and encryption model flag.
-    const { AppConfigRepository } = await import('../repositories/implementations/AppConfigRepository.js');
     const configRepo = new AppConfigRepository();
     await configRepo.update(config.id, {
       ...config,
@@ -579,22 +611,18 @@ export class AuthService {
   }
 
   /**
-   * Unlocks protected data using the org passphrase.
-   * Used when encryption model is 'passphrase' — login/unlock only authenticates
-   * the user but does not derive the data encryption key.
+   * Unlocks protected data using the org passphrase and enrolls the current user
+   * for automatic key restoration on future login/unlock by wrapping the passphrase
+   * with the user's login password.
+   *
+   * After first enrollment, the user's login password alone is sufficient to
+   * restore decryption capability (via the wrapped passphrase stored per-user).
    *
    * @param {string} orgPassphrase
+   * @param {string} [loginPassword]  The user's current login password (required for enrollment).
    * @returns {Promise<boolean>}
    */
-  /**
-   * Unlocks protected data using the org passphrase.
-   * This is the ONLY way to derive the data encryption key.
-   * Login password is never used for data encryption.
-   *
-   * @param {string} orgPassphrase
-   * @returns {Promise<boolean>}
-   */
-  async unlockProtectedData(orgPassphrase) {
+  async unlockProtectedData(orgPassphrase, loginPassword) {
     this._assertPermission('store_manager');
 
     const { config } = await this._resolveOrgConfig(this._currentUser);
@@ -611,6 +639,12 @@ export class AuthService {
     if (!valid) return false;
 
     await cryptoService.deriveSessionKey(orgPassphrase, config.orgEncryptionSalt);
+
+    // If login password is provided, wrap the org passphrase for future auto-unlock.
+    if (loginPassword && this._currentUser) {
+      await this._wrapAndStorePassphrase(this._currentUser, loginPassword, orgPassphrase);
+    }
+
     return true;
   }
 
@@ -643,8 +677,6 @@ export class AuthService {
     const newKey = await cryptoService.deriveKeyRaw(orgPassphrase, config.orgEncryptionSalt);
 
     // Re-encrypt all customer sensitive fields.
-    const { CustomerRepository } = await import('../repositories/implementations/CustomerRepository.js');
-    const { decryptField, encryptField } = await import('../infrastructure/crypto/webCrypto.js');
     const custRepo = new CustomerRepository();
     const customers = await custRepo.findAll();
     let migrated = 0;
@@ -713,8 +745,6 @@ export class AuthService {
    */
   async _resolveOrgConfig(user) {
     if (!user?.organizationNodeId) return { config: null, rootOrgId: null };
-    const { AppConfigRepository } = await import('../repositories/implementations/AppConfigRepository.js');
-    const { OrgRepository } = await import('../repositories/implementations/OrgRepository.js');
     const configRepo = new AppConfigRepository();
     const orgRepo = new OrgRepository();
     const node = await orgRepo.findById(user.organizationNodeId);
@@ -730,6 +760,56 @@ export class AuthService {
   _assertPermission(requiredRole) {
     if (!this.hasRole(requiredRole)) {
       throw new Error(`Permission denied. Required role: ${requiredRole}`);
+    }
+  }
+
+  /**
+   * Wraps the org passphrase with a key derived from the user's login password
+   * and stores the wrapped passphrase on the user record.
+   *
+   * @param {object} user      The user record.
+   * @param {string} password  The user's login password.
+   * @param {string} orgPassphrase  The org passphrase to wrap.
+   * @returns {Promise<void>}
+   */
+  async _wrapAndStorePassphrase(user, password, orgPassphrase) {
+    const wrappingSalt = cryptoService.generateOrgSalt();
+    const wrapped = await cryptoService.wrapPassphrase(orgPassphrase, password, wrappingSalt);
+    await this._userRepo.update(user.id, {
+      ...user,
+      wrappedOrgPassphrase: wrapped.ciphertext,
+      wrappedOrgPassphraseIv: wrapped.iv,
+      wrappingSalt,
+      updatedAt: Date.now(),
+    });
+  }
+
+  /**
+   * Restores the data encryption key by unwrapping the org passphrase stored
+   * on the user record. Called automatically after successful login or unlock.
+   *
+   * @param {object} user      The user record.
+   * @param {string} password  The user's login password.
+   * @returns {Promise<void>}
+   */
+  async _restoreEncryptionKey(user, password) {
+    if (!user.wrappedOrgPassphrase || !user.wrappedOrgPassphraseIv || !user.wrappingSalt) {
+      return; // Not yet enrolled — user must call unlockProtectedData first.
+    }
+    try {
+      const orgPassphrase = await cryptoService.unwrapPassphrase(
+        user.wrappedOrgPassphrase,
+        user.wrappedOrgPassphraseIv,
+        password,
+        user.wrappingSalt,
+      );
+      const { config } = await this._resolveOrgConfig(user);
+      if (config?.orgEncryptionSalt) {
+        await cryptoService.deriveSessionKey(orgPassphrase, config.orgEncryptionSalt);
+      }
+    } catch {
+      // Unwrap failed (e.g. password changed without re-wrapping) — silently skip.
+      // User can still manually unlock via unlockProtectedData if needed.
     }
   }
 }

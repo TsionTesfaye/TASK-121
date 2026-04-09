@@ -1,99 +1,78 @@
-## 1. Verdict
-Partial Pass
+# 1. Verdict
+Pass
 
-## 2. Scope and Verification Boundary
-- Reviewed project structure, docs, runtime config, source pages/services/router, and tests in [README.md](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/README.md), [package.json](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/package.json), [vitest.config.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/vitest.config.js), `src/**`, and `tests/**`.
-- Explicitly excluded all inputs under `./.tmp/` (per instruction) and did not use them as evidence.
-- Runtime verification executed locally (non-Docker):
-  - `npm run test` passed: **92 files, 1361 tests**.
-  - `npm run build` passed (Vite production build succeeded).
-  - `npm run preview -- --host 127.0.0.1 --port 4173` + `curl -I` returned `HTTP/1.1 200 OK`.
-- Docker-based verification was **not executed**. README documents Docker quickstart ([README.md](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/README.md:20)), but Docker was **not required** for runnability judgment because local Node commands are documented and worked ([README.md](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/README.md:51), [README.md](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/README.md:66), [README.md](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/README.md:75)).
-- Not executed:
-  - Real browser-driver E2E (Playwright/Puppeteer).
-  - Long wall-clock validation of retry timers (1/5/15 minutes) and prolonged idle auto-lock behavior in a real browser.
-- Remains unconfirmed:
-  - Real-browser long-duration behavior (multi-tab lock propagation over time, wall-clock retry cadence).
-- Saved report file: [delivery_acceptance_project_architecture_inspection_2026-04-05_delivery_acceptance_review_codex.md](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/delivery_acceptance_project_architecture_inspection_2026-04-05_delivery_acceptance_review_codex.md).
+# 2. Scope and Verification Boundary
+- Reviewed project structure, runtime docs, core routes/pages/services/repositories, security/RBAC logic, persistence/encryption logic, and test assets under `src/`, `tests/`, `README.md`, and `package.json`.
+- Explicitly excluded all content under `./.tmp/` from review evidence.
+- Executed local non-Docker verification:
+  - `npm run build` (passed)
+  - `npm run test` (passed: 103 files, 1453 tests)
+- Did **not** execute Docker commands per review constraints.
+- A preview-server smoke check was attempted but environment ports were already occupied by external processes; this is treated as an environment boundary, not a project defect.
+- Remaining unconfirmed item: true end-user behavior in a real browser session under human interaction timing (the suite is primarily Vitest/jsdom + simulation).
 
-## 3. Top Findings
-1. Severity: Medium
-Conclusion: Draft queue remediation flow exists in service logic but is not exposed in the UI.
-Brief rationale: The required delivery lifecycle includes `Draft -> Queued -> Sent -> Failed`. Without a UI action, Draft items caused by missing template variables are operationally stranded for end users.
-Evidence: Requeue API exists in [NotificationService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/NotificationService.js:250); queue UI renders status rows but no Draft remediation action in [MessagesPage.svelte](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/pages/MessagesPage.svelte:329); `rg -n "requeueDraft" src/pages src/services` returns only `src/services/NotificationService.js:250`.
-Impact: Messaging center flow is only partially complete at UI level.
-Minimum actionable fix: Add Draft-row action(s) in Messages queue to edit missing variables and call `notificationService.requeueDraft(...)`, with success/error feedback.
+# 3. Top Findings
+1. **Severity: Low**
+   - **Conclusion:** Error logging includes raw runtime objects in a few places, which can expose more diagnostic detail than necessary.
+   - **Brief rationale:** Most logs are concise, but a couple of calls log full error/event objects instead of sanitized messages.
+   - **Evidence:** `src/App.svelte:75`, `src/infrastructure/db/db.js:45`
+   - **Impact:** Low risk of leaking internal state/error metadata to console in production-like usage.
+   - **Minimum actionable fix:** Normalize logging to message-only (or redacted structured logger) for runtime errors/events.
 
-2. Severity: Medium
-Conclusion: LocalStorage preference requirements are only partially implemented end-to-end in UI.
-Brief rationale: Prompt requires `last selected store` and `table column layouts` as lightweight UI preferences. Helpers exist, but user-facing wiring is incomplete.
-Evidence: Preference helpers exist in [ui.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/app/stores/ui.js:61) and [org.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/app/stores/org.js:87); app restores/persists selected store in [App.svelte](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/App.svelte:33) and [App.svelte](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/App.svelte:48); usage scan shows no page/component calls to `saveColumnLayout` and no page-level selected-store setter flow (`rg -n "saveColumnLayout|selectedStore\.set" src/pages src/components src/app src`).
-Impact: Prompt-fit is partial for UI preference flows.
-Minimum actionable fix: Add explicit store selector and column-layout controls in relevant tables and wire them to existing persistence helpers.
+2. **Severity: Low**
+   - **Conclusion:** End-to-end validation is strong in simulation, but real-browser automation is not present.
+   - **Brief rationale:** The test suite is extensive and passes, but the project explicitly uses simulation-based E2E rather than browser-driver E2E.
+   - **Evidence:** `README.md:112-116`; runtime result: `npm run test` passed with 1453 tests.
+   - **Impact:** Minor residual risk around browser-only integration behaviors (hash navigation, focus/interaction timing quirks, real rendering differences).
+   - **Minimum actionable fix:** Add one lightweight real-browser smoke spec (e.g., Playwright) for login -> route guard -> key page render.
 
-3. Severity: Medium
-Conclusion: Cross-user UI state isolation is partial for in-memory table layout state.
-Brief rationale: On user switch, if next user has no saved layout, previous in-memory layout can remain because restore is conditional and no explicit reset occurs.
-Evidence: User-switch restore path in [App.svelte](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/App.svelte:30); restore only sets state when stored value exists in [ui.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/app/stores/ui.js:77); login cleanup does not clear `tableColumnLayouts` in [LoginPage.svelte](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/pages/LoginPage.svelte:19).
-Impact: Potential stale preference leakage between users on shared devices.
-Minimum actionable fix: Reset `tableColumnLayouts` to `{}` when no persisted value is found and explicitly clear it during login/logout cleanup.
+# 4. Security Summary
+- **authentication / login-state handling:** **Pass**
+  - Evidence: password policy + lockout + guest expiry + inactivity lock + unlock-attempt termination are implemented (`src/services/AuthService.js:31-34`, `src/services/AuthService.js:92-107`, `src/services/AuthService.js:173-199`, `src/services/AuthService.js:216-233`, `src/services/AuthService.js:249-257`).
+- **frontend route protection / route guards:** **Pass**
+  - Evidence: route access resolution redirects unauthorized sessions (`src/app/router/accessControl.js:21-39`), role-route map enforced in router (`src/app/router/routes.js:44-50`).
+- **page-level / feature-level access control:** **Pass**
+  - Evidence: service-layer RBAC and scope checks are consistently enforced (examples: `src/services/ImportExportService.js:38-39`, `src/services/NotificationService.js:33-39`, `src/services/RiskReviewService.js:345-353`, `src/services/StyleService.js:250-258`).
+- **sensitive information exposure:** **Partial Pass**
+  - Evidence: sensitive fields are encrypted/masked and access-gated (`src/services/CustomerService.js`, `src/services/CryptoService.js`), but some raw-object logging remains (`src/App.svelte:75`, `src/infrastructure/db/db.js:45`).
+- **cache / state isolation after switching users:** **Pass**
+  - Evidence: explicit login pre-cleanup and logout cleanup for auth/session/org/layout state (`src/pages/LoginPage.svelte:19-30`, `src/App.svelte:121-137`).
 
-4. Severity: Medium
-Conclusion: Test stack is strong but browser-runtime confidence is partial because E2E is simulation-only.
-Brief rationale: Acceptance asks for credible verification; this suite is comprehensive in jsdom but lacks real browser-driver validation for runtime-only interaction risks.
-Evidence: jsdom-only environment in [vitest.config.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/vitest.config.js:7); README explicitly states no Playwright/Puppeteer in [README.md](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/README.md:112); suite passed (`npm run test`: 92/92 files, 1361/1361 tests).
-Impact: Residual risk for browser-specific behavior (timers, focus/visibility, real navigation nuances).
-Minimum actionable fix: Add a small browser-driver smoke suite for auth/guards/queue lifecycle critical paths.
+# 5. Test Sufficiency Summary
+## Test Overview
+- Unit tests exist: yes (`tests/unit_tests/*.test.js`)
+- Component tests exist: yes (`tests/browser_tests/components/*.test.js`)
+- Page/route integration tests exist: yes (`tests/browser_tests/pages/*.test.js`, `tests/browser_tests/navigation.test.js`)
+- E2E tests exist: yes (`tests/e2e_tests/*.test.js`, simulation-based)
+- Obvious test entry points:
+  - `npm run test`
+  - `npm run test:coverage`
 
-## 4. Security Summary
-- Authentication / login-state handling: Pass
-  - Evidence: Password policy, lockout, guest expiry, and auto-lock/unlock logic in [AuthService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/AuthService.js:78), [AuthService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/AuthService.js:181), [AuthService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/AuthService.js:221), and password validation in [validation.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/utils/validation.js:21).
-- Frontend route protection / route guards: Pass
-  - Evidence: Access resolution and redirect logic in [accessControl.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/app/router/accessControl.js:21) and [Router.svelte](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/app/router/Router.svelte:10).
-- Page-level / feature-level access control: Pass
-  - Evidence: Role-route map in [routes.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/app/router/routes.js:44), plus service-level role/scope gates (examples: [TicketService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/TicketService.js:314), [RiskReviewService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/RiskReviewService.js:637)).
-- Sensitive information exposure: Pass
-  - Evidence: Encrypted/masked sensitive fields in [CustomerService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/CustomerService.js:56) and [CustomerService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/CustomerService.js:262), crypto enforcement in [CryptoService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/CryptoService.js:118), and no runtime network/API usage detected by code scan (`rg -n "\\b(fetch|axios|XMLHttpRequest|navigator\\.sendBeacon|WebSocket)\\b" src tests`).
-- Cache / state isolation after switching users: Partial Pass
-  - Evidence: Strong cleanup exists, but table-layout in-memory reset gap remains (Top Finding #3).
+## Core Coverage
+- happy path: **covered**
+  - Evidence: broad domain coverage in passing suite (`npm run test`: 1453 passed tests).
+- key failure paths: **covered**
+  - Evidence: dedicated tests for auth lockout/session isolation/validation/RBAC/failure handling (`tests/API_tests/authLockout.test.js`, `tests/API_tests/sessionIsolation.test.js`, `tests/unit_tests/validationHardening.test.js`, `tests/unit_tests/permissionGuards.test.js`).
+- security-critical coverage: **covered**
+  - Evidence: targeted security/rbac tests (`tests/API_tests/securityPatch.test.js`, `tests/API_tests/rbac.test.js`, `tests/unit_tests/rbacHardening.test.js`).
 
-## 5. Test Sufficiency Summary
-### Test Overview
-- Unit tests exist: example [authService.test.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/tests/unit_tests/authService.test.js:1).
-- Component tests exist: `tests/browser_tests/components/**/*.test.js` (example [Table.test.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/tests/browser_tests/components/Table.test.js:1)).
-- Page/route integration tests exist: `tests/browser_tests/pages/**/*.test.js` and [navigation.test.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/tests/browser_tests/navigation.test.js:1).
-- E2E tests exist (simulation-based): example [authFlow.test.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/tests/e2e_tests/authFlow.test.js:1).
-- Test entry points are explicit in [package.json](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/package.json:10) and layer includes in [vitest.config.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/vitest.config.js:10).
+## Major Gaps
+1. No browser-driver E2E; browser behavior is validated mainly via jsdom and simulation.
 
-### Core Coverage
-- Happy path: Covered
-  - Evidence: End-to-end domain suites pass; `npm run test` passed 1361 tests.
-- Key failure paths: Covered
-  - Evidence: Security/auth/scope/validation suites, including [securityPatch.test.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/tests/API_tests/securityPatch.test.js:1), lockout/session isolation tests.
-- Security-critical coverage: Covered
-  - Evidence: Router/auth/RBAC/cross-org tests across unit/API layers.
+## Final Test Verdict
+Pass
 
-### Major Gaps
-- No real browser-driver E2E (jsdom simulation only).
-- No test for Draft queue remediation from UI (and UI path is currently missing).
-- No test for cross-user in-memory table-layout reset when next user has no persisted layout.
+# 6. Engineering Quality Summary
+- Architecture is credible and maintainable for scope: clear separation across pages, router/stores, services, repositories, and infrastructure layers (`README.md:134-195`).
+- Data and business constraints are implemented in service layer rather than UI-only checks (good for offline SPA integrity).
+- Persistence design matches prompt: IndexedDB for domain entities and LocalStorage for lightweight preferences (`src/infrastructure/db/schema.js:16-282`, `README.md:13-15`).
+- Import/export, RBAC, scoped access, and audit trail are integrated rather than mocked-only patterns.
 
-### Final Test Verdict
-Partial Pass
+# 7. Visual and Interaction Summary
+- Applicable and acceptable for the scenario: coherent enterprise console layout, role-aware navigation, tabbed workflows, modals, loading/empty/toast feedback states, and responsive table handling (multiple pages under `src/pages/*.svelte`).
+- Visual polish is functional/professional (not high-brand), but sufficient for acceptance criteria.
 
-## 6. Engineering Quality Summary
-- Architecture quality is credible for scope: clear page/router/store/service/repository split, IndexedDB abstraction, and broad automated tests.
-- Maintainability concern: preference subsystem has helper-level infrastructure but incomplete page wiring, increasing behavior drift risk.
-- Workflow completeness concern: a required operational branch (Draft queue remediation) exists in service layer but is not productized in UI.
-
-## 7. Visual and Interaction Summary
-- Overall UI is coherent and product-like: consistent layout, tabbed workspaces, status badges, loading/empty states, and modal-driven interactions.
-- Material interaction issue: queue Draft state has no user action path to recover and continue delivery lifecycle.
-- Material interaction issue: required preference interactions (store selection / table layout controls) are not clearly surfaced in the current UI.
-
-## 8. Next Actions
-1. Implement Draft queue remediation actions in Messaging UI and wire to `requeueDraft`.
-2. Add explicit store selector and table column-layout controls, persisted via existing LocalStorage helpers.
-3. Fix cross-user preference isolation by resetting `tableColumnLayouts` on user switch/login when no saved value exists.
-4. Add targeted tests for Draft remediation UI flow and cross-user table-layout reset.
-5. Add a minimal real-browser smoke suite for route guards, lock/unlock, and queue lifecycle.
+# 8. Next Actions
+1. Replace raw-object runtime logs with sanitized message logging (`src/App.svelte`, `src/infrastructure/db/db.js`).
+2. Add one real-browser smoke E2E (login + guarded route + critical page render) to close residual browser-only risk.
+3. Add a short “local non-Docker quick verify” snippet to README that includes expected success signals for build/test.

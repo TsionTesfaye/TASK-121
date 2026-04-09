@@ -129,7 +129,19 @@ export class BootstrapService {
       bootstrappedBy: adminId,
     });
 
-    // 5. Audit trail (does not require auth).
+    // 5. Wrap the org passphrase with the admin's login password so that
+    //    login/unlock automatically restores data decryption capability.
+    const wrappingSalt = cryptoService.generateOrgSalt();
+    const wrapped = await cryptoService.wrapPassphrase(effectivePassphrase, adminPassword, wrappingSalt);
+    await this._userRepo.update(adminId, {
+      ...adminUser,
+      wrappedOrgPassphrase: wrapped.ciphertext,
+      wrappedOrgPassphraseIv: wrapped.iv,
+      wrappingSalt,
+      updatedAt: Date.now(),
+    });
+
+    // 6. Audit trail (does not require auth).
     await auditService.log({
       actorId: adminId,
       action: 'system_bootstrap',

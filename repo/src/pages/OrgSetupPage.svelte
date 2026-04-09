@@ -302,13 +302,8 @@
   {#if isAdmin}
     <section class="panel passphrase-section">
       <h3>Protected Data Encryption</h3>
-      {#if currentEncryptionModel === 'passphrase'}
-        <p class="hint">Encryption model: <strong>Org passphrase</strong>. Authorized users unlock sensitive data with the org passphrase, independent of their login password.</p>
-        <button class="btn-secondary" on:click={() => { showPassphraseSetup = true; passphraseError = ''; passphraseValue = ''; passphraseConfirm = ''; }}>Change Passphrase</button>
-      {:else}
-        <p class="hint">Encryption model: <strong>Login password</strong>. Switch to an org passphrase so all authorized users can access protected data with a shared passphrase, independent of their login credentials.</p>
-        <button class="btn-primary" on:click={() => { showPassphraseSetup = true; passphraseError = ''; passphraseValue = ''; passphraseConfirm = ''; }}>Set Org Passphrase</button>
-      {/if}
+      <p class="hint">Encryption model: <strong>Org passphrase</strong>. The org passphrase is wrapped per-user with their login password, so login and unlock automatically restore access to encrypted data.</p>
+      <button class="btn-secondary" on:click={() => { showPassphraseSetup = true; passphraseError = ''; passphraseValue = ''; passphraseConfirm = ''; }}>Change Passphrase</button>
     </section>
   {/if}
 </div>

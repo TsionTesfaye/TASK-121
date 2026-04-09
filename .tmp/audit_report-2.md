@@ -2,104 +2,86 @@
 - Partial Pass
 
 2. Scope and Verification Boundary
-- Reviewed project documentation and implementation across routing, pages, services, repositories, stores, and IndexedDB schema.
-- Reviewed key files under `src/`, `README.md`, `package.json`, and test suites under `tests/`.
-- Explicitly excluded `./.tmp/` and all of its contents from review evidence.
-- Also excluded existing generated reports/summaries as authoritative input when not needed for source-of-truth verification.
-- Executed documented local verification commands (non-Docker):
-  - `npm run build` (pass)
-  - `npm run test` (pass: 96 files, 1398 tests)
-- Did not execute Docker/container commands (per boundary/rules).
-- Docker-based verification was not required to prove local runnability because non-Docker commands are documented and succeeded.
-- Not executed:
-  - real-browser manual UX walkthrough
-  - Playwright/Puppeteer/browser-driver E2E (project itself documents simulation-based E2E)
-- Unconfirmed:
-  - true browser rendering behavior across real devices beyond jsdom/simulation
-  - final UX polish under real interaction latency and viewport diversity
+- Reviewed: project structure, routing/guards, auth/session handling, RBAC/data-scope enforcement, core services (org/master data/CRM/orders/tickets/messages/NLP/risk/import-export), key Svelte pages, IndexedDB schema/repositories, README/scripts, and automated test setup.
+- Runtime verification performed (non-Docker, documented commands):
+  - `npm run build` (success)
+  - `npm run test` (success: 104 files, 1460 tests)
+  - `npm run test:browser` (success: 1 Playwright smoke test)
+- Excluded sources: all files under `./.tmp/` and its subdirectories were not read or used as evidence.
+- Not executed: any Docker/container commands (`docker`, `docker-compose`, etc.).
+- Docker-based verification required but not executed: No. Local documented verification path exists and was successfully executed.
+- Remaining unconfirmed:
+  - Long-session runtime behavior (actual 10-minute inactivity lock timing under manual UI use) was not manually timed in-browser.
 
 3. Top Findings
 - Severity: High
-  - Conclusion: Sensitive-data encryption does not implement an app passphrase-derived key model; it derives the data key from the login password.
-  - Brief rationale: The prompt requires protected fields to be encrypted at rest using an app passphrase-derived key. Current implementation ties the data key to the user password, and cross-user decryption works only when passwords match.
+  - Conclusion: Prompt-fit deviation in protected-data unlock semantics (password vs org passphrase).
+  - Brief rationale: Prompt requires re-entry of password after auto-lock to decrypt protected data; implementation explicitly separates session unlock (password) from data decrypt unlock (org passphrase), changing the user flow and security model.
   - Evidence:
-    - `/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/pages/BootstrapPage.svelte:82` (only admin password input; no app passphrase flow)
-    - `/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/AuthService.js:134` and `:290` (`deriveSessionKey(password, ...)` on login/unlock)
-    - `/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/CryptoService.js:60` (session key derived from provided password)
-    - `/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/tests/API_tests/systemCorrectness.test.js:56` and `:69` (cross-user decrypt requires same password)
-    - `/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/tests/API_tests/hostileQa.test.js:147` and `:151` (different password cannot decrypt)
-  - Impact: Prompt-fit and security-model deviation; authorized multi-role users with distinct passwords cannot reliably share decryption for protected fields without password reuse.
-  - Minimum actionable fix: Introduce an org/app passphrase-backed data key (or wrapped org key) independent of user login passwords; use login only to unlock/access the wrapped data key.
+    - `unlockSession` does not derive data key: [AuthService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/AuthService.js:263)
+    - Protected data unlocked via org passphrase: [AuthService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/AuthService.js:597)
+    - UI asks for org passphrase for sensitive data: [CRMPage.svelte](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/pages/CRMPage.svelte:425)
+  - Impact: Core prompt requirement is altered; acceptance fit is reduced despite otherwise strong implementation.
+  - Minimum actionable fix: Align flow with prompt by allowing post-lock password re-entry to restore decryption capability (or explicitly map password->key derivation policy consistent with prompt and update UI/service accordingly).
 
-- Severity: Medium
-  - Conclusion: Organization Setup table is not truly editable for hierarchy structure and relies on manual parent-ID entry.
-  - Brief rationale: Prompt calls for a Tree + editable Table workflow for hierarchy definition; current table offers display + rename/delete only.
+- Severity: Low
+  - Conclusion: Build emits warnings (unused CSS selector and dynamic/static mixed imports).
+  - Brief rationale: Does not block runnability but indicates minor maintainability/perf hygiene issues.
   - Evidence:
-    - `/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/pages/OrgSetupPage.svelte:229` (table cells are static text)
-    - `/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/pages/OrgSetupPage.svelte:236` (actions limited to Rename/Delete)
-    - `/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/pages/OrgSetupPage.svelte:262` (parent node captured as raw text ID)
-  - Impact: Partial completeness and higher operator error risk for hierarchy maintenance.
-  - Minimum actionable fix: Add constrained inline/table editing for parent/type relationships (validated company→factory→store→warehouse links).
-
-- Severity: Medium
-  - Conclusion: Incremental NLP is implemented as imported-text delta processing, not as a direct CRM-note update pipeline.
-  - Brief rationale: Prompt specifies incremental “analyze new notes” for CRM updates; implementation requires manual text import and then incremental run.
-  - Evidence:
-    - `/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/NLPService.js:116` (incremental run reads `findByOrgUpdatedSince` from imported texts)
-    - `/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/pages/NLPPage.svelte:118` (manual file/text import path)
-    - Source search evidence: `nlpService` call sites appear in NLP/Login pages, not CRM/Ticket services (`rg -n "nlpService|importText" src/services src/pages` run during review)
-  - Impact: Partial prompt-fit for CRM-driven incremental analysis workflow.
-  - Minimum actionable fix: Persist CRM/ticket notes as NLP input sources automatically and mark them for incremental runs without manual import.
+    - Build warning output (`npm run build`): unused selector in `OrdersPage.svelte` `.restriction-flag`
+    - Build warning output: dynamic import mixed with static import for several modules
+  - Impact: Minor code health/performance cleanliness risk; not a functional blocker.
+  - Minimum actionable fix: Remove dead selector and normalize import strategy per module (either static or intentional code-split boundaries).
 
 4. Security Summary
-- authentication / login-state handling: Partial Pass
-  - Evidence: Password/lockout/auto-lock controls exist (`/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/AuthService.js:31`, `:86`, `:224`, `:255`), but sensitive-data keying is tied to login password rather than app passphrase (`:134`, `:290`).
+- authentication / login-state handling: Pass
+  - Evidence: password policy, lockout, guest expiry, auto-lock/unlock logic in [AuthService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/AuthService.js:31), [validation.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/utils/validation.js:21), lock UI in [App.svelte](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/App.svelte:170).
 - frontend route protection / route guards: Pass
-  - Evidence: Central access resolver redirects unauthorized access (`/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/app/router/accessControl.js:21`), role-route map enforced (`/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/app/router/routes.js:44`).
+  - Evidence: route access resolution in [accessControl.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/app/router/accessControl.js:21) and redirecting router in [Router.svelte](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/app/router/Router.svelte:10).
 - page-level / feature-level access control: Pass
-  - Evidence: Service-layer RBAC + scope checks are consistently enforced (`_requireRole` / `_assertOrgScope`) across core services, e.g. `/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/CustomerService.js:421`, `/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/TicketService.js:314`, `/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/NotificationService.js:485`.
-- sensitive information exposure: Partial Pass
-  - Evidence: No obvious direct plaintext leakage in console logging (`rg` scan shows limited error/warn logs), masked UI defaults present (`/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/pages/CRMPage.svelte:384`), but key-management model mismatch remains material.
+  - Evidence: role and org-scope checks enforced in services (examples: [MasterDataService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/MasterDataService.js:39), [RiskReviewService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/RiskReviewService.js:346), [OrgService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/OrgService.js:299)).
+- sensitive information exposure: Pass
+  - Evidence: sensitive CRM fields encrypted/masked by default ([CustomerService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/CustomerService.js:54), [CryptoService.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/CryptoService.js:118), [CRMPage.svelte](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/pages/CRMPage.svelte:434)); no obvious plaintext secret dumps in logging paths reviewed.
 - cache / state isolation after switching users: Pass
-  - Evidence: Pre-login cleanup and logout clear auth/session/UI/org state (`/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/pages/LoginPage.svelte:19`, `/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/App.svelte:121`), and user-scoped LocalStorage keys are used (`/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/app/stores/ui.js:51`, `/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/app/stores/org.js:78`).
+  - Evidence: cleanup on login/logout and user-scoped LocalStorage keys in [LoginPage.svelte](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/pages/LoginPage.svelte:19), [App.svelte](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/App.svelte:121), [ui.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/app/stores/ui.js:51), [org.js](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/app/stores/org.js:78).
 
 5. Test Sufficiency Summary
 - Test Overview
-  - unit tests exist: Yes (`tests/unit_tests/*.test.js`)
-  - component tests exist: Yes (`tests/browser_tests/components/*.test.js`)
-  - page / route integration tests exist: Yes (`tests/browser_tests/pages/*.test.js`, `tests/browser_tests/navigation.test.js`)
-  - E2E tests exist: Yes, simulation-style (`tests/e2e_tests/*.test.js`)
-  - obvious test entry points:
-    - `npm run test` (validated during review)
-    - `npm run test:watch`
-    - `npm run test:coverage`
+  - Unit tests exist: Yes (`tests/unit_tests/*`).
+  - Component tests exist: Yes (`tests/browser_tests/components/*`).
+  - Page / route integration tests exist: Yes (`tests/browser_tests/pages/*`, `tests/browser_tests/navigation.test.js`).
+  - E2E tests exist: Yes (`tests/e2e_tests/*`) plus Playwright smoke (`tests/browser_smoke/smoke.spec.js`).
+  - Obvious entry points: `npm run test`, `npm run test:browser`.
 - Core Coverage
   - happy path: covered
-    - Evidence: passing E2E flow suites for auth, master data, orders, tickets, risk, NLP, import/export.
+    - Evidence: runtime pass `1460/1460`; E2E flows include auth/master-data/order/ticket/notification/risk/NLP/import-export.
   - key failure paths: covered
-    - Evidence: lockout, validation, RBAC, queue failure/retry, schema import checks represented by dedicated API/unit suites.
-  - security-critical coverage: partially covered
-    - Evidence: many security-focused suites exist and pass, but tests codify same-password requirement for shared decrypt instead of validating app-passphrase model.
+    - Evidence: suites named and passing for validation, lockout, scope enforcement, security patches, state-machine break tests.
+  - security-critical coverage: covered
+    - Evidence: passing suites include `rbac`, `permissionGuards`, `sessionIsolation`, `authLockout`, `customerCrypto`, `securityPatch`.
 - Major Gaps
-  - No explicit test that protected-field encryption uses an app passphrase independent of user login passwords.
-  - No real browser-driver E2E (project intentionally uses jsdom/simulation), so browser-specific behavior remains a boundary.
-  - No strong automated test evidence for a truly editable hierarchy table workflow.
+  - Gap 1: No clear real-browser E2E coverage beyond a single smoke test; most E2E is simulation-based.
+  - Gap 2: No explicit manual-duration test evidence in this run for 10-minute auto-lock timing.
+  - Gap 3: No explicit test proving prompt-required “password re-entry decrypts protected data” behavior, which currently diverges.
 - Final Test Verdict
-  - Partial Pass
+  - Pass
 
 6. Engineering Quality Summary
-- Architecture is credible and production-shaped for a frontend-only SPA: clear module split (pages/services/repositories/infrastructure), consistent RBAC/scope checks, and IndexedDB abstraction.
-- Runnability and maintainability are strong: documented commands, clean local build, and broad automated test coverage passed in this review.
-- Primary architecture risk is key management coupling data encryption to user password rather than an app passphrase model, which affects both security posture and requirement fit.
+- Overall architecture is credible and modular for scope: UI/router, service layer, repositories, and infra split is clear and maintainable.
+- IndexedDB schema and repository abstraction are comprehensive and aligned with offline constraints.
+- RBAC and org-scope checks are consistently centralized in services.
+- Import/export flow includes encryption, schema validation, and preview-diff-before-apply, with protected stores excluded.
+- Main material quality concern is requirement-semantic drift in unlock/decrypt design (not structural code quality collapse).
 
 7. Visual and Interaction Summary
-- Clearly applicable and generally acceptable: pages are connected, interaction states (loading/empty/error/modals/toasts) are implemented, and role-driven navigation is coherent.
-- Styling is consistent and functional but utilitarian; no major blocker found via static review.
-- Real-browser visual polish/responsiveness remains partially unconfirmed because verification was simulation/static rather than manual browser walkthrough.
+- Applicable and generally acceptable.
+- Functional areas are visually separated and navigable; states like loading/empty/errors/modals are broadly present.
+- Responsive handling appears implemented in major pages (`@media` rules and layout collapse).
+- No material visual defect found that would independently fail acceptance.
 
 8. Next Actions
-- 1. Replace login-password-derived data encryption with an app/org passphrase-backed key architecture, including secure key-wrapping and unlock flow.
-- 2. Add migration logic for existing encrypted records so current datasets remain readable after key-model change.
-- 3. Implement structured editable hierarchy controls in Organization Setup table (parent/type edits with constrained validation).
-- 4. Wire CRM/ticket note creation/updates into NLP imported-text ingestion for true incremental “analyze new notes” behavior.
-- 5. Add browser-driver smoke tests for auth lock screen, RBAC route interception, and responsive rendering of major pages.
+1. Align protected-data unlock flow with prompt requirement: re-entry of password should enable decryption after auto-lock (or formally revise spec and implementation contract).
+2. Add/adjust tests that assert the accepted unlock/decrypt behavior end-to-end (including post-lock recovery path).
+3. Add at least one richer browser E2E scenario beyond smoke (auth → protected route → sensitive-data unlock path).
+4. Clean build warnings (unused CSS and mixed dynamic/static imports) to reduce maintenance/perf noise.
+5. Keep current security guardrails and org-scope tests as mandatory gates in CI, since they are a project strength.

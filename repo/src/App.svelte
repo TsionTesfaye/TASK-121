@@ -12,8 +12,17 @@
   import { ticketService } from './services/TicketService.js';
   import { riskReviewService } from './services/RiskReviewService.js';
   import { nlpService } from './services/NLPService.js';
+  import { OrgRepository } from './repositories/implementations/OrgRepository.js';
   import { initDB } from './infrastructure/db/db.js';
   import { subscribe as subscribeBroadcast, CHANNEL_NAMES, EVENT_TYPES as BC_EVENTS } from './infrastructure/broadcast/broadcastManager.js';
+
+  async function seedOrgTree(orgNodeId) {
+    try {
+      const repo = new OrgRepository();
+      const node = await repo.findById(orgNodeId);
+      if (node) orgTree.set([node]);
+    } catch { /* ignore */ }
+  }
 
   let dbReady = false;
   let dbError = null;
@@ -35,12 +44,7 @@
     // Seed the orgTree with the user's own node so resolveOrgContext works
     // even before the full tree is loaded (non-admin users may never load it).
     if ($currentUser.organizationNodeId && $orgTree.length === 0) {
-      import('./repositories/implementations/OrgRepository.js').then(({ OrgRepository }) => {
-        const repo = new OrgRepository();
-        repo.findById($currentUser.organizationNodeId).then((node) => {
-          if (node) orgTree.set([node]);
-        }).catch(() => {});
-      }).catch(() => {});
+      seedOrgTree($currentUser.organizationNodeId);
     }
   }
 
@@ -72,7 +76,7 @@
       schedulerService.registerTask('overdue_check', () => ticketService.evaluateOverdue(), 5 * 60_000);
       await schedulerService.start();
     } catch (err) {
-      console.warn('[App] Scheduler startup error (non-fatal):', err);
+      console.warn('[App] Scheduler startup error (non-fatal):', err?.message || 'Unknown error');
     }
 
     // Phase 3: Subscribe to broadcast state changes so auto-lock and cross-tab

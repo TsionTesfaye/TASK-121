@@ -50,24 +50,26 @@ afterEach(() => {
 // 1. PASSWORD NEVER USED FOR ENCRYPTION (EXPLICIT ASSERTION)
 // ══════════════════════════════════════════════════════════════════════════════
 
-describe('Passphrase-only encryption — password never used', () => {
-  it('login does NOT derive encryption key', async () => {
+describe('Password-based auto-unlock — wrapped passphrase model', () => {
+  it('login auto-derives encryption key via wrapped passphrase', async () => {
     await authService.logout();
     await authService.login('pp_admin', ADMIN_PASS);
 
-    // After login, crypto must be locked — login password not used for encryption
-    expect(cryptoService.isUnlocked()).toBe(false);
-    await expect(cryptoService.encrypt('test')).rejects.toThrow(/locked/i);
+    // After login, crypto is unlocked — passphrase was auto-unwrapped
+    expect(cryptoService.isUnlocked()).toBe(true);
+    const enc = await cryptoService.encrypt('test');
+    const dec = await cryptoService.decrypt(enc.ciphertext, enc.iv);
+    expect(dec).toBe('test');
   });
 
-  it('screen unlock does NOT derive encryption key', async () => {
+  it('screen unlock restores encryption key via wrapped passphrase', async () => {
     // Lock session
     authService.lockSession();
     expect(cryptoService.isUnlocked()).toBe(false);
 
-    // Unlock screen with login password — key must NOT be derived
+    // Unlock screen with login password — key IS derived via wrapped passphrase
     await authService.unlockSession(ADMIN_PASS);
-    expect(cryptoService.isUnlocked()).toBe(false);
+    expect(cryptoService.isUnlocked()).toBe(true);
   });
 
   it('password change does NOT affect encryption key', async () => {
@@ -238,41 +240,33 @@ describe('Passphrase-only — UI wiring', () => {
     expect(content).toContain('Protected Data Encryption');
   });
 
-  it('CRMPage has passphrase unlock UI', async () => {
+  it('CRMPage no longer has separate passphrase unlock UI', async () => {
     const fs = await import('fs');
     const path = await import('path');
     const content = fs.readFileSync(path.resolve('src/pages/CRMPage.svelte'), 'utf8');
-    expect(content).toContain('unlockProtectedData');
-    expect(content).toContain('handlePassphraseUnlock');
-    expect(content).toContain('Unlock Protected Data');
+    // The separate passphrase prompt has been removed — login/unlock auto-restores encryption
+    expect(content).not.toContain('handlePassphraseUnlock');
+    expect(content).not.toContain('Unlock Protected Data');
+    expect(content).not.toContain('showPassphrasePrompt');
   });
 
-  it('AuthService has no password-derived key paths', async () => {
+  it('AuthService uses _restoreEncryptionKey in login and unlockSession', async () => {
     const fs = await import('fs');
     const path = await import('path');
     const content = fs.readFileSync(path.resolve('src/services/AuthService.js'), 'utf8');
 
-    // login() must NOT call deriveSessionKey with password
+    // login() restores encryption via _restoreEncryptionKey
     const loginMethod = content.substring(
       content.indexOf('async login('),
       content.indexOf('return freshUser;'),
     );
-    expect(loginMethod).not.toContain('deriveSessionKey(password');
-    expect(loginMethod).not.toContain('deriveSessionKey(newPassword');
+    expect(loginMethod).toContain('_restoreEncryptionKey');
 
-    // unlockSession() must NOT call deriveSessionKey
+    // unlockSession() restores encryption via _restoreEncryptionKey
     const unlockMethod = content.substring(
       content.indexOf('async unlockSession('),
       content.indexOf('// ── Account management'),
     );
-    expect(unlockMethod).not.toContain('deriveSessionKey');
-
-    // changePassword() must NOT call deriveSessionKey
-    const changePwMethod = content.substring(
-      content.indexOf('async changePassword('),
-      content.indexOf('async deactivateAccount('),
-    );
-    expect(changePwMethod).not.toContain('deriveSessionKey');
-    expect(changePwMethod).not.toContain('rotateEncryptedFields');
+    expect(unlockMethod).toContain('_restoreEncryptionKey');
   });
 });

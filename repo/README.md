@@ -109,16 +109,18 @@ distinct layers:
 
 ### E2E testing strategy
 
-**There is no Playwright, Puppeteer, or real browser driver.** All E2E tests are
-simulation-based: they exercise the full service + repository + IndexedDB stack
-directly in Node using `fake-indexeddb`. This gives complete, deterministic
-coverage of every user flow — auth, orders, tickets, CRM, NLP, risk review,
-import/export — without requiring a running browser or network.
+The primary E2E suite is **simulation-based**: it exercises the full service +
+repository + IndexedDB stack directly in Node using `fake-indexeddb`. This gives
+complete, deterministic coverage of every user flow — auth, orders, tickets, CRM,
+NLP, risk review, import/export — without requiring a running browser or network.
 
-This approach was chosen because:
+A single **Playwright + Chromium** smoke test supplements the simulation suite
+with real browser-driver confidence (see [Browser smoke test](#browser-smoke-test-playwright) below).
+
+The simulation-first approach was chosen because:
 - The system has no backend — all logic lives in services and IndexedDB
-- A browser driver would add infrastructure complexity with no coverage benefit
 - Deterministic execution eliminates flakiness from DOM timing
+- The Playwright smoke test covers the minimal bootstrap → login → protected page flow that only a real browser can verify
 
 Browser API shims used in tests:
 
@@ -128,6 +130,20 @@ Browser API shims used in tests:
 | Web Crypto | `globalThis.crypto.subtle` (native in Node 18) |
 | BroadcastChannel | Lightweight in-process mock (`tests/setup.js`) |
 | LocalStorage | jsdom built-in |
+
+### Browser smoke test (Playwright)
+
+A single Playwright + Chromium smoke test provides real browser-driver confidence
+on top of the simulation-based suite. It covers bootstrap → login → protected
+page load → route guard redirect.
+
+The simulation-based E2E suite remains the primary test strategy.
+
+```bash
+# Build the app first, then run the browser smoke test
+npm run build
+npm run test:browser
+```
 
 ---
 
@@ -219,7 +235,9 @@ been triggered, to prevent username enumeration.
 ### Session auto-lock
 
 After **10 minutes of inactivity**, the session locks automatically. The encryption
-key is cleared from memory. The user must re-enter their password to unlock.
+key is cleared from memory. The user must re-enter their password to unlock. On
+successful unlock, the data encryption key is automatically restored from the
+per-user wrapped org passphrase — no separate passphrase prompt is needed.
 
 ### Unlock attempt limit
 
@@ -405,34 +423,38 @@ colors) to each have their own independent version history.
 
 - Password hashing: PBKDF2 / SHA-256 / 310,000 iterations.
 - Field encryption: AES-GCM / 256-bit key / unique 96-bit IV per operation.
-- Session key: derived from login password + organization-level salt; cleared on lock/logout.
+- Session key: derived from the org passphrase + organization-level salt; cleared on lock/logout.
 - Backup key: derived from a **separate** backup passphrase (not the login password).
 - IV is stored alongside ciphertext in the Customer model (`storedValueIv`, `allergiesIv`, etc.).
 
 #### Encryption model
 
-The session encryption key is derived from the user's password combined with an
-organization-level salt (generated at bootstrap, stored in `appConfig`). On login,
-the system resolves the user's assigned org node to its root company and looks up
-the shared salt. If no org salt exists (pre-migration data), it falls back to the
-user's individual password salt. This means:
+The data encryption key is derived from an **org passphrase** combined with an
+organization-level salt (generated at bootstrap, stored in `appConfig`). At bootstrap
+the org passphrase defaults to the admin password.
 
-- Users within the same org who use **the same password** derive the same key and
-  can decrypt each other's data.
-- Users with **different passwords** derive different keys and cannot cross-decrypt,
-  even within the same org.
-- The org salt lookup works for users assigned at **any level** of the hierarchy
-  (company, factory, store, warehouse) — all resolve to the same root company salt.
+The org passphrase is **wrapped (encrypted) per-user** with a key derived from each
+user's login password and stored on the user record. This means:
 
-This is an intentional design tradeoff for an offline-first architecture:
+- On **login**, the system automatically unwraps the org passphrase using the login
+  password and derives the session encryption key. No separate passphrase prompt is
+  required.
+- On **session unlock** after inactivity lock, the same automatic unwrapping occurs —
+  the user's password restores both the session and the data decryption capability.
+- Users within the same org share the same underlying encryption key, regardless of
+  their individual login passwords.
+- **Password changes** automatically re-wrap the org passphrase with the new password.
+- **Logout** and **session lock** clear the encryption key from memory.
 
-- No extractable key material is stored — the key exists only in memory during an
+The org salt lookup works for users assigned at **any level** of the hierarchy
+(company, factory, store, warehouse) — all resolve to the same root company salt.
+
+Security properties:
+
+- No extractable key material is stored in plaintext — the org passphrase exists
+  only wrapped per-user, and the derived CryptoKey lives only in memory during an
   unlocked session.
-- The derivation model uses standard PBKDF2 with a shared org salt, avoiding the
-  complexity of key-wrapping in a browser-only environment.
-
-A future enhancement could introduce an organization-level data key wrapped
-per-user, allowing independent passwords while maintaining shared data access.
+- Cross-org isolation is enforced: each organization has its own salt and passphrase.
 
 ### Multi-tab coordination
 
@@ -541,8 +563,10 @@ Membership tiers: `Bronze`, `Silver`, `Gold`.
 ## Security Notes
 
 Sensitive data (stored value, allergy notes, material restrictions) is encrypted
-at rest using AES-GCM. The encryption key is held in memory only during an
-unlocked session and cleared on lock or logout.
+at rest using AES-GCM. The encryption key is derived from the org passphrase
+(wrapped per-user with login passwords) and held in memory only during an unlocked
+session. It is cleared on lock or logout and automatically restored on password
+re-entry.
 
 See [Authentication & Password Rules](#authentication--password-rules) for lockout,
 auto-lock, and session expiry behavior.

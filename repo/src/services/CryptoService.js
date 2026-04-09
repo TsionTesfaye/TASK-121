@@ -204,6 +204,39 @@ export class CryptoService {
     return decryptField(ciphertextB64, ivHex, key);
   }
 
+  // ── Passphrase wrapping ──────────────────────────────────────────────────────
+
+  /**
+   * Encrypts an org passphrase using a key derived from the user's login password.
+   * The wrapped passphrase is stored per-user so that login/unlock can restore
+   * the data encryption key without a separate passphrase prompt.
+   *
+   * @param {string} orgPassphrase  The org passphrase to wrap.
+   * @param {string} password       The user's login password.
+   * @param {string} saltHex        A dedicated wrapping salt (hex).
+   * @returns {Promise<{ ciphertext: string; iv: string }>}
+   */
+  async wrapPassphrase(orgPassphrase, password, saltHex) {
+    const salt = fromHex(saltHex);
+    const wrappingKey = await deriveKey(password, salt);
+    return encryptField(orgPassphrase, wrappingKey);
+  }
+
+  /**
+   * Decrypts a previously wrapped org passphrase using the user's login password.
+   *
+   * @param {string} ciphertext  The wrapped passphrase ciphertext.
+   * @param {string} iv          The IV used during wrapping.
+   * @param {string} password    The user's login password.
+   * @param {string} saltHex     The wrapping salt (hex).
+   * @returns {Promise<string>}  The org passphrase in plaintext.
+   */
+  async unwrapPassphrase(ciphertext, iv, password, saltHex) {
+    const salt = fromHex(saltHex);
+    const wrappingKey = await deriveKey(password, salt);
+    return decryptField(ciphertext, iv, wrappingKey);
+  }
+
   // ── Masking ─────────────────────────────────────────────────────────────────
 
   /**

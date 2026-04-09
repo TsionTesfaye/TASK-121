@@ -23,6 +23,8 @@ import {
   NLPRunRepository,
 } from '../repositories/implementations/NLPRepository.js';
 import { AppConfigRepository } from '../repositories/implementations/AppConfigRepository.js';
+import { MasterDataRepository } from '../repositories/implementations/MasterDataRepository.js';
+import { TicketRepository, TicketEventRepository } from '../repositories/implementations/TicketRepository.js';
 import { auditService } from './AuditService.js';
 import { authService } from './AuthService.js';
 import { generateId } from '../utils/idGenerator.js';
@@ -359,9 +361,6 @@ export class NLPService {
    * @returns {Promise<number>}
    */
   async _ingestOperationalNotes(organizationId) {
-    const { MasterDataRepository } = await import('../repositories/implementations/MasterDataRepository.js');
-    const { TicketRepository, TicketEventRepository } = await import('../repositories/implementations/TicketRepository.js');
-
     const mdRepo = new MasterDataRepository();
     const ticketRepo = new TicketRepository();
     const eventRepo = new TicketEventRepository();

@@ -1,40 +1,47 @@
-# Verdict Two
+# Reinspection Results (From Scratch)
 
-Issue 1 (Encryption): FIXED  
-Evidence:
+## Scope
+Re-reviewed the two previously reported findings from scratch using fresh static inspection and runtime verification.
 
-Evidence:
+Commands executed:
+- `npm run build`
+- `npx vitest run tests/unit_tests/unlockSemantics.test.js`
 
-- Passphrase-only key derivation in app code:  
-  AuthService.js (line 571)  
-  AuthService.js (line 613)
-- Login/unlock/password-change do not derive encryption key from login password:  
-  AuthService.js (line 118)  
-  AuthService.js (line 263)  
-  AuthService.js (line 444)
-- Migration is now test-covered end-to-end (legacy simulation + migration + post-migration decrypt):  
-  encryptionMigration.test.js (line 79)  
-  encryptionMigration.test.js (line 100)  
-  encryptionMigration.test.js (line 336)
-- Cross-user / wrong-passphrase / lock-logout behavior remains test-covered:  
-  orgPassphrase.test.js (line 96)  
-  orgPassphrase.test.js (line 160)  
-  orgPassphrase.test.js (line 174)
+## Finding 1: High — Prompt-fit deviation in protected-data unlock semantics
+### Previous issue
+After auto-lock, password re-entry did not restore decryption; a separate org passphrase step was required.
 
-Issue 2 (Org Table): FIXED  
-Evidence:
+### Current status
+- **Fixed**
 
-- Editable UI controls exist for name/type/parent selector (not raw parent ID): OrgSetupPage.svelte (line 381), OrgSetupPage.svelte (line 383), OrgSetupPage.svelte (line 388), OrgSetupPage.svelte (line 390).
-- Validation in service: cycle prevention OrgService.js (line 109), parent/type combinations OrgService.js (line 117), same-org constraint OrgService.js (line 104).
-- Tests cover edit + invalid cases: orgEditableTable.test.js (line 43), orgEditableTable.test.js (line 69), orgEditableTable.test.js (line 126), orgEditableTable.test.js (line 158), orgEditableTable.test.js (line 189).
+### Evidence
+- `unlockSession` now restores encryption key automatically via `_restoreEncryptionKey(user, password)`:
+  - [src/services/AuthService.js:274](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/AuthService.js:274)
+  - [src/services/AuthService.js:279](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/AuthService.js:279)
+- Login path also auto-restores decryption capability:
+  - [src/services/AuthService.js:136](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/AuthService.js:136)
+- Explicit implementation and comments for wrapped-passphrase restore flow:
+  - [src/services/AuthService.js:14](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/AuthService.js:14)
+  - [src/services/AuthService.js:795](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/services/AuthService.js:795)
+- CRM UI no longer shows the separate passphrase unlock gate in the sensitive-data action path; it uses direct reveal flow:
+  - [src/pages/CRMPage.svelte:395](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/src/pages/CRMPage.svelte:395)
+- Dedicated tests now validate this behavior (password unlock restores decryption):
+  - [tests/unit_tests/unlockSemantics.test.js:90](/Users/tsiontesfaye/Projects/EaglePoint/retail-ops/repo/tests/unit_tests/unlockSemantics.test.js:90)
+  - Runtime result: `17/17` tests passed.
 
-Issue 3 (NLP): FIXED  
-Evidence:
+## Finding 2: Low — Build warnings (unused CSS selector + mixed dynamic/static import warnings)
+### Previous issue
+`npm run build` emitted warnings including unused CSS (`.restriction-flag`) and dynamic/static import warnings.
 
-- Incremental run auto-ingests CRM/ticket notes: NLPService.js (line 111), NLPService.js (line 118), NLPService.js (line 361).
-- CRM/ticket ingestion + dedupe via sourceId: NLPService.js (line 375), NLPService.js (line 376), NLPService.js (line 398), NLPService.js (line 399).
-- Tests prove auto-ingest, idempotency, and manual import coexistence: nlpAutoIngest.test.js (line 57), nlpAutoIngest.test.js (line 103), nlpAutoIngest.test.js (line 141), nlpAutoIngest.test.js (line 173).
+### Current status
+- **Fixed**
 
-FINAL:
+### Evidence
+- Fresh build output completed cleanly with **no warnings**:
+  - `✓ built in 978ms`
+- Previously flagged unused selector is removed from current `OrdersPage.svelte` (no `.restriction-flag` rule present).
 
-PASS
+## Final Determination
+- High finding: **Fixed**
+- Low finding: **Fixed**
+- Overall status of previously reported issues: **All fixed**

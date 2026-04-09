@@ -2,7 +2,6 @@
   import { customerService } from '../services/CustomerService.js';
   import { ticketService } from '../services/TicketService.js';
   import { authService } from '../services/AuthService.js';
-  import { cryptoService } from '../services/CryptoService.js';
   import { currentUser, currentRole, isLocked } from '../app/stores/auth.js';
   import { orgTree, resolveOrgContext } from '../app/stores/org.js';
   import { showToast, tableColumnLayouts } from '../app/stores/ui.js';
@@ -83,16 +82,8 @@
   let ratingLoading = false;
   let ratingError = '';
 
-  // Org passphrase unlock
-  let showPassphrasePrompt = false;
-  let passphraseInput = '';
-  let passphraseError = '';
-  let passphraseLoading = false;
-  let encryptionModel = 'password';
-
   $: actorId = $currentUser?.id ?? '';
   $: orgId = resolveOrgContext($currentUser, $orgTree).organizationId || ($currentUser?.organizationNodeId ?? '');
-  $: protectedDataLocked = encryptionModel === 'passphrase' && !cryptoService.isUnlocked();
 
   // Clear decrypted sensitive fields when session is locked or user logs out.
   $: if ($isLocked || !$currentUser) sensitiveFields = null;
@@ -105,26 +96,6 @@
 
   $: if (orgId) {
     loadCustomers();
-    authService.getEncryptionModel().then((m) => { encryptionModel = m; }).catch(() => {});
-  }
-
-  async function handlePassphraseUnlock() {
-    passphraseError = '';
-    passphraseLoading = true;
-    try {
-      const ok = await authService.unlockProtectedData(passphraseInput);
-      if (ok) {
-        showPassphrasePrompt = false;
-        passphraseInput = '';
-        showToast('success', 'Protected data unlocked.');
-      } else {
-        passphraseError = 'Incorrect passphrase.';
-      }
-    } catch (err) {
-      passphraseError = err.message;
-    } finally {
-      passphraseLoading = false;
-    }
   }
 
   async function loadCustomers() {
@@ -421,8 +392,6 @@
             <h4>Sensitive Data</h4>
             {#if sensitiveFields}
               <button class="btn-link" on:click={hideSensitive}>Hide</button>
-            {:else if canManage && protectedDataLocked}
-              <button class="btn-link" on:click={() => { showPassphrasePrompt = true; passphraseError = ''; passphraseInput = ''; }}>Unlock with Passphrase</button>
             {:else if canManage}
               <button class="btn-link" on:click={revealSensitive} disabled={revealLoading}>
                 {revealLoading ? 'Revealing…' : 'Reveal'}
@@ -672,27 +641,6 @@
         <button on:click={() => showRatingModal = false}>Cancel</button>
         <button class="btn-primary" on:click={handleAddRating} disabled={ratingLoading || ratingReason.trim().length < 10}>
           {ratingLoading ? 'Submitting…' : 'Submit Rating'}
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- Org passphrase unlock modal -->
-{#if showPassphrasePrompt}
-  <div class="modal-overlay" role="presentation" on:click={() => showPassphrasePrompt = false} on:keydown={(e) => { if (e.key === 'Escape') showPassphrasePrompt = false; }}>
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="passphrase-modal-title" on:click|stopPropagation on:keydown|stopPropagation>
-      <h3 id="passphrase-modal-title">Unlock Protected Data</h3>
-      <p class="modal-hint">Enter the organization passphrase to access sensitive customer data.</p>
-      {#if passphraseError}<div class="form-error">{passphraseError}</div>{/if}
-      <label>Org Passphrase
-        <input type="password" bind:value={passphraseInput} autocomplete="off" placeholder="Enter org passphrase" />
-      </label>
-      <div class="modal-actions">
-        <button on:click={() => showPassphrasePrompt = false}>Cancel</button>
-        <button class="btn-primary" on:click={handlePassphraseUnlock} disabled={passphraseLoading || !passphraseInput}>
-          {passphraseLoading ? 'Unlocking…' : 'Unlock'}
         </button>
       </div>
     </div>

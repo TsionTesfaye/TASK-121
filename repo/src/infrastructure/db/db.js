@@ -42,7 +42,7 @@ export async function initDB(overrideFactory = null) {
       _db = /** @type {IDBDatabase} */ (request.result);
 
       _db.onerror = (event) => {
-        console.error('[IndexedDB] Unhandled error:', event);
+        console.error('[IndexedDB] Unhandled error:', event?.target?.error?.message || 'Unknown error');
       };
 
       resolve(_db);

@@ -189,7 +189,7 @@ describe('Dictionary persistence — resolves to root org', () => {
     const fs = await import('fs');
     const path = await import('path');
     const content = fs.readFileSync(path.resolve('src/App.svelte'), 'utf8');
-    expect(content).toContain('repo.findById($currentUser.organizationNodeId)');
+    expect(content).toContain('seedOrgTree($currentUser.organizationNodeId)');
     expect(content).toContain('orgTree.set([node])');
   });
 });
