@@ -7,7 +7,7 @@
 **Question:**  
 The prompt defines a hierarchical structure (company → factory → store → warehouse) but does not specify whether entities can belong to multiple parents.
 
-**Assumption:**  
+**My Understanding:**  
 Each entity belongs to exactly one parent.
 
 **Solution:**  
@@ -20,7 +20,7 @@ Implemented a strict tree structure with single-parent relationships enforced at
 **Question:**  
 The prompt defines roles but does not specify whether access is scoped globally or by hierarchy level.
 
-**Assumption:**  
+**My Understanding:**  
 Roles are scoped to the user’s assigned organization subtree.
 
 **Solution:**  
@@ -33,7 +33,7 @@ All queries enforce hierarchical filtering based on assigned node.
 **Question:**  
 The prompt defines the hierarchy but does not explicitly list valid child-type combinations.
 
-**Assumption:**  
+**My Understanding:**  
 Valid parent-child pairs are company → factory, factory → store, and store → warehouse only.
 
 **Solution:**  
@@ -46,7 +46,7 @@ Rejected invalid parent-child combinations during create/update.
 **Question:**  
 The prompt states only one active version per entity type but does not define behavior when publishing a new version.
 
-**Assumption:**  
+**My Understanding:**  
 Publishing a new version automatically deactivates the previous one.
 
 **Solution:**  
@@ -59,7 +59,7 @@ On publish, system enforces an atomic active-version switch.
 **Question:**  
 The prompt does not define behavior if multiple users or tabs attempt to publish versions simultaneously.
 
-**Assumption:**  
+**My Understanding:**  
 Publishing requires optimistic concurrency checks; stale editors must fail and reload.
 
 **Solution:**  
@@ -72,7 +72,7 @@ Blocked publish if the active version changed after the editor loaded.
 **Question:**  
 The prompt states deactivated records cannot be referenced by new styles but does not define behavior for existing references.
 
-**Assumption:**  
+**My Understanding:**  
 Existing references remain valid.
 
 **Solution:**  
@@ -85,7 +85,7 @@ Validation blocks new references to inactive records while preserving existing a
 **Question:**  
 The prompt requires a 10-character reason note but does not define when validation occurs.
 
-**Assumption:**  
+**My Understanding:**  
 Validation occurs before version publish.
 
 **Solution:**  
@@ -98,7 +98,7 @@ Blocked submission if reason note length < 10.
 **Question:**  
 The prompt centers master data around style SKU but does not define what a style must reference.
 
-**Assumption:**  
+**My Understanding:**  
 A style references color, size, season, brand, and supplier, and may also be scoped to store/warehouse.
 
 **Solution:**  
@@ -111,7 +111,7 @@ Implemented style validation against all required referenced entities.
 **Question:**  
 The prompt states allergies/material restrictions are flagged on orders but does not define enforcement.
 
-**Assumption:**  
+**My Understanding:**  
 Flags are warnings only and do not block order creation.
 
 **Solution:**  
@@ -124,7 +124,7 @@ Displayed warnings on affected orders without blocking submission.
 **Question:**  
 The prompt sets a 500-character maximum but does not define whether validation occurs before or after encryption.
 
-**Assumption:**  
+**My Understanding:**  
 Validation must occur before encryption.
 
 **Solution:**  
@@ -137,7 +137,7 @@ Rejected values exceeding 500 plaintext characters before encryption.
 **Question:**  
 The prompt defines stored value in USD to two decimals but does not specify negative balance or fractional precision behavior.
 
-**Assumption:**  
+**My Understanding:**  
 Negative balances are not allowed and values are rounded to two decimals.
 
 **Solution:**  
@@ -150,7 +150,7 @@ Blocked operations that would produce negative balance and normalized stored val
 **Question:**  
 The prompt defines optional points but does not specify whether negative or fractional points are allowed.
 
-**Assumption:**  
+**My Understanding:**  
 Points are non-negative integers.
 
 **Solution:**  
@@ -163,7 +163,7 @@ Validated points as integer values ≥ 0.
 **Question:**  
 The prompt defines service ratings (1–5 stars) but does not specify whether half-star values are allowed.
 
-**Assumption:**  
+**My Understanding:**  
 Only integer ratings 1–5 are allowed.
 
 **Solution:**  
@@ -176,7 +176,7 @@ Validated ratings as whole-number values between 1 and 5 inclusive.
 **Question:**  
 The prompt requires “order progress” notifications but does not define order states.
 
-**Assumption:**  
+**My Understanding:**  
 Orders follow a simple lifecycle: draft → placed → in_progress → ready → completed, with canceled as terminal alternative.
 
 **Solution:**  
@@ -189,7 +189,7 @@ Implemented order state transitions and tied notification triggers to them.
 **Question:**  
 The prompt defines a 48-hour SLA but does not specify system behavior when exceeded.
 
-**Assumption:**  
+**My Understanding:**  
 Tickets become overdue but remain active.
 
 **Solution:**  
@@ -202,7 +202,7 @@ Marked tickets as overdue and triggered notifications.
 **Question:**  
 The prompt does not define whether tickets can be reopened after closure.
 
-**Assumption:**  
+**My Understanding:**  
 Closed tickets are terminal.
 
 **Solution:**  
@@ -215,7 +215,7 @@ Blocked transitions from closed state to any other state.
 **Question:**  
 The prompt defines after-sales tickets but does not specify the minimum content required.
 
-**Assumption:**  
+**My Understanding:**  
 Each ticket requires subject, description, category, and priority.
 
 **Solution:**  
@@ -228,7 +228,7 @@ Rejected ticket creation without those fields.
 **Question:**  
 The prompt defines retry intervals but does not specify persistence across reloads.
 
-**Assumption:**  
+**My Understanding:**  
 Retry schedule persists.
 
 **Solution:**  
@@ -241,7 +241,7 @@ Stored retry timestamps in IndexedDB and resumed processing on app load.
 **Question:**  
 The prompt defines Draft → Queued → Sent → Failed but does not define what “Sent” means in an offline in-app-only system.
 
-**Assumption:**  
+**My Understanding:**  
 A message is Sent when it is successfully materialized into the recipient’s in-app notification store.
 
 **Solution:**  
@@ -254,7 +254,7 @@ Marked queue items as Sent only after successful local notification creation.
 **Question:**  
 The prompt requires placeholders but does not define validation behavior.
 
-**Assumption:**  
+**My Understanding:**  
 All placeholders must be resolved before sending.
 
 **Solution:**  
@@ -267,7 +267,7 @@ Blocked queueing of messages with missing variables.
 **Question:**  
 The prompt defines a 160-character limit for compact notices but does not specify whether the limit applies before or after variable substitution.
 
-**Assumption:**  
+**My Understanding:**  
 The limit applies after substitution.
 
 **Solution:**  
@@ -280,7 +280,7 @@ Validated the fully rendered compact message length before queueing.
 **Question:**  
 The prompt defines retry attempts but does not specify behavior after failure.
 
-**Assumption:**  
+**My Understanding:**  
 After 3 retries, message is permanently failed.
 
 **Solution:**  
@@ -293,7 +293,7 @@ Set status to Failed and stopped further retries.
 **Question:**  
 The prompt defines multiple triggers but does not specify deduplication.
 
-**Assumption:**  
+**My Understanding:**  
 Duplicate triggers should not create duplicate messages.
 
 **Solution:**  
@@ -306,7 +306,7 @@ Generated idempotency keys for queued messages.
 **Question:**  
 The prompt defines offline NLP features but does not specify whether they are transformer-based, rule-based, or heuristic.
 
-**Assumption:**  
+**My Understanding:**  
 The system uses bundled lightweight local processors and dictionaries, not large remote or server-backed models.
 
 **Solution:**  
@@ -319,7 +319,7 @@ Restricted NLP implementation to bundled offline-capable processors.
 **Question:**  
 The prompt requires precision/recall/F1 metrics but does not define how they are computed for arbitrary imported text.
 
-**Assumption:**  
+**My Understanding:**  
 Metrics come from the active validation profile associated with the model version, not from per-run ground-truth labels on arbitrary live data.
 
 **Solution:**  
@@ -332,7 +332,7 @@ Stored benchmark metrics from locally maintained validation profiles with each r
 **Question:**  
 The prompt allows “analyze new notes” but does not define whether “new” means created only or created/updated.
 
-**Assumption:**  
+**My Understanding:**  
 Incremental runs must include records created or updated after the last run.
 
 **Solution:**  
@@ -345,7 +345,7 @@ Used the last successful run timestamp against both createdAt and updatedAt.
 **Question:**  
 The prompt mentions configurable rules but does not define execution timing.
 
-**Assumption:**  
+**My Understanding:**  
 Rules run on content submission and on imported event ingestion.
 
 **Solution:**  
@@ -358,7 +358,7 @@ Triggered rule evaluation on create/update/import events.
 **Question:**  
 The prompt mentions configurable machine rules but does not define what a rule targets.
 
-**Assumption:**  
+**My Understanding:**  
 Rules target a specific entity type and contain typed parameters.
 
 **Solution:**  
@@ -371,7 +371,7 @@ Stored rule definitions with targetEntityType, ruleType, and parameter payload.
 **Question:**  
 The prompt defines file type and size limits but not enforcement stage.
 
-**Assumption:**  
+**My Understanding:**  
 Validation occurs before storage.
 
 **Solution:**  
@@ -384,7 +384,7 @@ Rejected invalid files at upload stage.
 **Question:**  
 The prompt requires PNG/JPEG validation but does not specify whether extension, MIME type, or file signature is authoritative.
 
-**Assumption:**  
+**My Understanding:**  
 Magic-byte signature and MIME type are both checked.
 
 **Solution:**  
@@ -397,7 +397,7 @@ Validated file headers and MIME before acceptance.
 **Question:**  
 The prompt uses local device fingerprinting but does not define persistence or accuracy expectations.
 
-**Assumption:**  
+**My Understanding:**  
 Fingerprinting is best-effort only and persists per browser environment.
 
 **Solution:**  
@@ -410,7 +410,7 @@ Stored a non-unique device fingerprint seed in LocalStorage and documented it as
 **Question:**  
 The prompt refers to linked account patterns but does not define how accounts become linked.
 
-**Assumption:**  
+**My Understanding:**  
 Linked accounts are inferred from shared fingerprint signals or manual reviewer linkage.
 
 **Solution:**  
@@ -423,7 +423,7 @@ Stored explicit LinkedAccount relationships with evidence metadata.
 **Question:**  
 The prompt requires abnormal bidding/shill heuristics but does not define where bidding-like events come from.
 
-**Assumption:**  
+**My Understanding:**  
 Bid/event records are local operational records or imported event data; the app does not provide a full auction UI.
 
 **Solution:**  
@@ -436,7 +436,7 @@ Added bid event ingestion and heuristic evaluation over stored event records.
 **Question:**  
 The prompt requires an outcome code and comment on risk resolution but does not define valid outcome codes.
 
-**Assumption:**  
+**My Understanding:**  
 Outcome codes are enumerated and not free text.
 
 **Solution:**  
@@ -449,7 +449,7 @@ Restricted case resolution to predefined outcome codes.
 **Question:**  
 The prompt allows import but does not define conflict resolution.
 
-**Assumption:**  
+**My Understanding:**  
 Import overwrites existing data after preview and confirmation.
 
 **Solution:**  
@@ -462,7 +462,7 @@ Implemented preview diff and controlled full replacement.
 **Question:**  
 The prompt does not specify whether audit logs or sessions are overwritten.
 
-**Assumption:**  
+**My Understanding:**  
 Sensitive system data must not be overwritten during normal import.
 
 **Solution:**  
@@ -475,7 +475,7 @@ Excluded audit logs and session data from standard import.
 **Question:**  
 The prompt does not define behavior if import is interrupted mid-apply.
 
-**Assumption:**  
+**My Understanding:**  
 Import must stage data before replacement and only promote once validation succeeds.
 
 **Solution:**  
@@ -488,7 +488,7 @@ Used a staging-and-apply import flow instead of direct per-store replacement.
 **Question:**  
 The prompt defines passphrase-based encryption but not algorithm details, IV handling, or password change behavior.
 
-**Assumption:**  
+**My Understanding:**  
 AES-GCM is used with a unique IV per encryption operation, and password changes require full protected-data re-encryption.
 
 **Solution:**  
@@ -501,7 +501,7 @@ Stored IVs alongside ciphertext and defined password-change re-encryption workfl
 **Question:**  
 The prompt requires encrypted backup export but does not define whether backup encryption uses the login password or a separate backup passphrase.
 
-**Assumption:**  
+**My Understanding:**  
 Backup export uses a separate backup passphrase.
 
 **Solution:**  
@@ -514,7 +514,7 @@ Separated account-login encryption from backup-file encryption.
 **Question:**  
 The prompt defines auto-lock but does not specify scope.
 
-**Assumption:**  
+**My Understanding:**  
 Only encrypted data becomes inaccessible while session identity remains.
 
 **Solution:**  
@@ -527,7 +527,7 @@ Maintained session but required password re-entry to decrypt protected data.
 **Question:**  
 The prompt defines guest mode but not expiry behavior or data visibility boundaries.
 
-**Assumption:**  
+**My Understanding:**  
 Guest mode is read-only, cannot reveal protected fields, and hard-expires to the login screen at 30 minutes.
 
 **Solution:**  
@@ -540,7 +540,7 @@ Blocked all write operations, blocked reveal actions, and forced guest logout on
 **Question:**  
 The prompt defines RBAC but does not specify enforcement layer.
 
-**Assumption:**  
+**My Understanding:**  
 RBAC must be enforced in service layer, with UI visibility as a secondary aid only.
 
 **Solution:**  
@@ -553,7 +553,7 @@ Added permission validation in all service methods.
 **Question:**  
 The prompt does not define behavior for storage failures.
 
-**Assumption:**  
+**My Understanding:**  
 Operations fail atomically.
 
 **Solution:**  
@@ -566,7 +566,7 @@ Wrapped writes in transactions and aborted on failure.
 **Question:**  
 The offline design depends on browser APIs such as IndexedDB, BroadcastChannel, localStorage, and Web Crypto, but tests must run under Node 18.
 
-**Assumption:**  
+**My Understanding:**  
 Node tests use polyfills/shims rather than browser-native APIs.
 
 **Solution:**  
