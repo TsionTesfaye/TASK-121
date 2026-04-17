@@ -331,6 +331,7 @@ describe('Self-audit — programmatic invariant verification', () => {
       'requeueDraft', // uses _requireRole in body
       'evaluateAndAutoCase', // delegates to evaluateBiddingHeuristics which has auth
       'linkUserAccounts', 'getLinkedAccounts', 'unlinkAccounts', // use _assertPermission
+      'seedDemoAccounts', // system init — runs before any user exists, auth guards inapplicable
     ]);
 
     for (const file of files) {

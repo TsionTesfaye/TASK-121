@@ -192,3 +192,106 @@ describe('MasterDataPage — history loading state', () => {
     }, { timeout: 2000 });
   });
 });
+
+// ── Real data-path: version published via form appears in card ─────────────
+
+describe('MasterDataPage — version published via UI form (real data path)', () => {
+  it('published version reason note appears in the version card', async () => {
+    render(MasterDataPage);
+    fireEvent.click(screen.getByText('+ Publish New Version'));
+    await waitFor(() => screen.getByText(/publish new version/i), { timeout: 2000 });
+
+    const noteInput = screen.getByPlaceholderText(/why are you publishing/i);
+    await fireEvent.input(noteInput, { target: { value: 'Initial catalog for UI form test' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^publish$/i }));
+
+    // After publishing, the version card with the reason note should appear
+    await waitFor(() => {
+      expect(screen.getByText('Initial catalog for UI form test')).toBeTruthy();
+    }, { timeout: 5000 });
+  });
+
+  it('publishing two versions: both reason notes visible in version list', async () => {
+    authService._currentUser = { ...authService._currentUser, role: 'administrator' };
+
+    await masterDataService.publishVersion({
+      organizationId: ORG_ID,
+      entityType: 'color',
+      entityId: 'color-v1',
+      payload: { colors: ['red'] },
+      reasonNote: 'First real version for count test',
+      actorId: adminUser.id,
+    });
+    await masterDataService.publishVersion({
+      organizationId: ORG_ID,
+      entityType: 'size',
+      entityId: 'size-v1',
+      payload: { sizes: ['S', 'M'] },
+      reasonNote: 'Second real version for count test',
+      actorId: adminUser.id,
+    });
+
+    render(MasterDataPage);
+    await waitFor(() => {
+      expect(screen.getByText('First real version for count test')).toBeTruthy();
+    }, { timeout: 3000 });
+
+    // Navigate to size tab to verify second version
+    const sizeTab = screen.queryByRole('button', { name: /size/i });
+    if (sizeTab) {
+      fireEvent.click(sizeTab);
+      await waitFor(() => {
+        expect(screen.getByText('Second real version for count test')).toBeTruthy();
+      }, { timeout: 3000 });
+    }
+  });
+});
+
+// ── Side-effect: error leaves version list empty ───────────────────────────
+
+describe('MasterDataPage — error state side-effects', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('getAllActiveVersions error: no version cards are rendered', async () => {
+    vi.spyOn(masterDataService, 'getAllActiveVersions').mockRejectedValue(
+      new Error('Master data unavailable'),
+    );
+
+    render(MasterDataPage);
+
+    await waitFor(() => {
+      const t = get(toast);
+      expect(t?.type).toBe('error');
+      expect(t?.message).toBe('Master data unavailable');
+    }, { timeout: 3000 });
+
+    // Side-effect: no version cards visible — list is empty due to load failure
+    expect(screen.queryByText(/reason note/i)).toBeNull();
+    expect(screen.queryByText(/initial/i)).toBeNull();
+  });
+});
+
+// ── Denied-action: analyst cannot publish versions ────────────────────────
+
+describe('MasterDataPage — denied-action assertions', () => {
+  it('analyst calling publishVersion is rejected at the service layer', async () => {
+    authService._currentUser = {
+      ...authService._currentUser,
+      role: 'analyst',
+    };
+
+    await expect(
+      masterDataService.publishVersion({
+        organizationId: ORG_ID,
+        entityType: 'color',
+        entityId: 'forbidden-color',
+        payload: { colors: ['green'] },
+        reasonNote: 'Forbidden publish attempt by analyst',
+        actorId: authService._currentUser.id,
+      })
+    ).rejects.toThrow(/permission|unauthorized|forbidden|not allowed/i);
+
+    authService._currentUser = { ...authService._currentUser, role: 'administrator' };
+  });
+});

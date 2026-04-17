@@ -1,5 +1,7 @@
 # RetailOps Insight & Compliance Console
 
+**Type:** Offline Web SPA (Single-Page Application) — no server, no network after page load.
+
 A fully offline, browser-based SPA for managing multi-store retail master data,
 customer communications, NLP analysis, and compliance/risk workflows.
 
@@ -48,51 +50,81 @@ Runs the `test` service by default.
 
 ---
 
-## Local Installation (Node 18.x required)
+## Demo Accounts
 
-The project requires **Node 18.x or later**. Use NVM to pin the version:
+The app automatically seeds the following demo accounts on first run. No bootstrap
+form is required — open the app and sign in directly.
 
-```bash
-nvm install 18
-nvm use 18
-```
+| Role | Username | Password |
+|------|----------|----------|
+| Administrator | `admin` | `Admin@retailops1` |
+| Store Manager | `manager` | `Manager@retailops1` |
+| Analyst | `analyst` | `Analyst@retailops1` |
+| Reviewer | `reviewer` | `Reviewer@retailops1` |
+| Guest | _(no credentials)_ | Click **Continue as Guest** on the login page — 30-min read-only session, CRM only |
 
-Install dependencies:
+---
 
-```bash
-npm install
-```
+## Verification Checklist
 
-### Development server
+Step-by-step verification of the core flows. Follow in order.
 
-```bash
-npm run dev
-```
-
-Opens at `http://localhost:5173`. The app runs entirely offline — no network
-requests are made after the initial page load.
-
-### Production build
+### 1. Start the app
 
 ```bash
-npm run build
-npm run preview
+docker-compose up dev
 ```
+
+Open `http://localhost:5173` in a browser.
+
+### 2. Verify auto-seed — no bootstrap prompt
+
+- The app must land directly on the **Sign In** page.
+- If a "First-time setup" form appears instead, clear browser storage and reload.
+
+### 3. Verify all four demo logins
+
+For each role in the table above:
+
+1. Enter the username and password.
+2. Click **Sign In**.
+3. Confirm the sidebar shows only the nav items for that role (see RBAC table below).
+4. Log out before testing the next role.
+
+**Expected sidebar items by role:**
+
+| Role | Expected nav items |
+|------|--------------------|
+| administrator | CRM, Orders, Tickets, Messages, Master Data, NLP Analysis, Risk Review, Org Setup, Admin |
+| store_manager | CRM, Orders, Tickets, Messages, Master Data, Risk Review |
+| analyst | CRM, NLP Analysis |
+| reviewer | Risk Review, Tickets |
+
+### 4. Verify route guard
+
+1. Log out so there is no active session.
+2. Navigate directly to `http://localhost:5173/#/crm` in the address bar.
+3. Confirm the **Sign In** page is shown, not the CRM page.
+
+### 5. Verify session lock / unlock
+
+1. Log in as `admin`.
+2. Click **Lock** in the sidebar.
+3. Confirm the lock screen overlay appears.
+4. Enter `Admin@retailops1` and click **Unlock**.
+5. Confirm the CRM page is restored — no separate passphrase prompt is shown.
+
+### 6. Run the test suite
+
+```bash
+docker-compose up --build --abort-on-container-exit test
+```
+
+All tests must pass. Exit code 0 = pass.
 
 ---
 
 ## Test Suite
-
-```bash
-# Run the full test suite once
-npm run test
-
-# Watch mode (re-runs on file change)
-npm run test:watch
-
-# Coverage report (output written to coverage/)
-npm run test:coverage
-```
 
 ### Test environment
 
@@ -114,13 +146,15 @@ repository + IndexedDB stack directly in Node using `fake-indexeddb`. This gives
 complete, deterministic coverage of every user flow — auth, orders, tickets, CRM,
 NLP, risk review, import/export — without requiring a running browser or network.
 
-A single **Playwright + Chromium** smoke test supplements the simulation suite
-with real browser-driver confidence (see [Browser smoke test](#browser-smoke-test-playwright) below).
+**Playwright + Chromium** browser tests supplement the simulation suite with
+real browser-driver confidence, covering all role logins, CRUD + persistence
+invariants, negative authorization (route guard + service-level rejection),
+and session lock/unlock state preservation.
 
 The simulation-first approach was chosen because:
 - The system has no backend — all logic lives in services and IndexedDB
 - Deterministic execution eliminates flakiness from DOM timing
-- The Playwright smoke test covers the minimal bootstrap → login → protected page flow that only a real browser can verify
+- The Playwright browser suite covers login flows, CRUD persistence, route guards, and session lock/unlock — flows that require a real browser
 
 Browser API shims used in tests:
 
@@ -131,19 +165,20 @@ Browser API shims used in tests:
 | BroadcastChannel | Lightweight in-process mock (`tests/setup.js`) |
 | LocalStorage | jsdom built-in |
 
-### Browser smoke test (Playwright)
+### Browser E2E tests (Playwright)
 
-A single Playwright + Chromium smoke test provides real browser-driver confidence
-on top of the simulation-based suite. It covers bootstrap → login → protected
-page load → route guard redirect.
+Playwright + Chromium tests provide real browser-driver confidence on top of
+the simulation-based suite. They cover login flows for all roles, CRUD + persistence
+invariants (create → reload → verify), role-restricted action blocking, and
+session lock/unlock state preservation.
 
-The simulation-based E2E suite remains the primary test strategy.
+Run the full browser suite via Docker:
 
 ```bash
-# Build the app first, then run the browser smoke test
-npm run build
-npm run test:browser
+docker-compose up --build --abort-on-container-exit test
 ```
+
+The simulation-based E2E suite remains the primary test strategy.
 
 ---
 

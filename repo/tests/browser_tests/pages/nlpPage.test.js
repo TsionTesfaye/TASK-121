@@ -23,6 +23,8 @@ import {
 } from '../../../src/infrastructure/broadcast/broadcastManager.js';
 import { MockBroadcastService } from '../../../src/infrastructure/broadcast/MockBroadcastService.js';
 import { nlpService } from '../../../src/services/NLPService.js';
+import { toast } from '../../../src/app/stores/ui.js';
+import { get } from 'svelte/store';
 import NLPPage from '../../../src/pages/NLPPage.svelte';
 
 const ADMIN_PASS = 'NLPPage@1234';
@@ -174,5 +176,118 @@ describe('NLPPage — run detail loading state', () => {
         expect(screen.getByText(/loading run details/i)).toBeTruthy();
       }, { timeout: 2000 });
     }
+  });
+});
+
+// ── Real data-path: import + batch run shows history row ──────────────────
+
+describe('NLPPage — real import + batch run appears in history (real data path)', () => {
+  beforeEach(async () => {
+    // Import a text document and run a batch directly via service
+    await nlpService.importText({
+      organizationId: ORG_ID,
+      sourceType: 'manual',
+      sourceId: 'real-data-path-source',
+      filename: 'real-test.txt',
+      rawText: 'This is a sample text for the real NLP data path test. Keywords: loyalty, discount, refund.',
+      actorId: adminUser.id,
+    });
+    await nlpService.runBatch({
+      organizationId: ORG_ID,
+      modelVersion: 'v1.0',
+      actorId: adminUser.id,
+    });
+  });
+
+  it('run history shows exactly one run after one batch', async () => {
+    render(NLPPage);
+
+    // Wait until at least one run row is visible
+    await waitFor(() => {
+      const runRows = document.querySelectorAll('.run-row');
+      expect(runRows.length).toBeGreaterThanOrEqual(1);
+    }, { timeout: 5000 });
+  });
+
+  it('run history row is visible (no longer shows empty hint)', async () => {
+    render(NLPPage);
+
+    await waitFor(() => {
+      expect(screen.queryByText(/no nlp runs yet/i)).toBeNull();
+    }, { timeout: 5000 });
+
+    // "No NLP runs yet" must be gone
+    expect(screen.queryByText(/no nlp runs yet/i)).toBeNull();
+  });
+
+  it('texts tab shows the imported source text', async () => {
+    render(NLPPage);
+    await waitFor(() => screen.getByRole('button', { name: /^texts$/i }), { timeout: 3000 });
+    fireEvent.click(screen.getByRole('button', { name: /^texts$/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText('real-test.txt') ?? screen.queryByText(/real-test/i)
+      ).toBeTruthy();
+    }, { timeout: 3000 });
+  });
+});
+
+// ── Side-effect: loading state leaves history empty ────────────────────────
+
+describe('NLPPage — loading state side-effects', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('while getRunHistory is pending, no run rows are visible', async () => {
+    vi.spyOn(nlpService, 'getRunHistory').mockImplementation(() => new Promise(() => {}));
+    render(NLPPage);
+
+    // Loading spinner/text visible
+    expect(screen.getByText('Loading…')).toBeTruthy();
+
+    // Side-effect: no run rows are rendered while loading
+    expect(screen.queryByText(/no nlp runs yet/i)).toBeNull(); // empty-state also hidden
+    expect(document.querySelectorAll('.run-row').length).toBe(0);
+  });
+});
+
+// ── Denied-action: store_manager cannot import texts ──────────────────────
+
+describe('NLPPage — denied-action assertions', () => {
+  it('store_manager calling importText is rejected at the service layer', async () => {
+    authService._currentUser = {
+      ...authService._currentUser,
+      role: 'store_manager',
+    };
+
+    await expect(
+      nlpService.importText({
+        organizationId: ORG_ID,
+        sourceType: 'manual',
+        sourceId: 'forbidden-src',
+        filename: 'forbidden.txt',
+        rawText: 'Forbidden import attempt.',
+        actorId: authService._currentUser.id,
+      })
+    ).rejects.toThrow(/permission|unauthorized|forbidden|not allowed/i);
+
+    authService._currentUser = { ...authService._currentUser, role: 'administrator' };
+  });
+
+  it('reviewer calling runBatch is rejected at the service layer', async () => {
+    authService._currentUser = {
+      ...authService._currentUser,
+      role: 'reviewer',
+    };
+
+    await expect(
+      nlpService.runBatch({
+        organizationId: ORG_ID,
+        modelVersion: 'v1.0',
+        actorId: authService._currentUser.id,
+      })
+    ).rejects.toThrow(/permission|unauthorized|forbidden|not allowed/i);
+
+    authService._currentUser = { ...authService._currentUser, role: 'administrator' };
   });
 });

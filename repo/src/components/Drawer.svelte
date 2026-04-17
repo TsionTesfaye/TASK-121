@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher, onMount, onDestroy } from 'svelte';
+  import { createEventDispatcher } from 'svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -17,10 +17,9 @@
   function handleKeydown(e) {
     if (e.key === 'Escape' && open) close();
   }
-
-  onMount(() => { window.addEventListener('keydown', handleKeydown); });
-  onDestroy(() => { window.removeEventListener('keydown', handleKeydown); });
 </script>
+
+<svelte:window on:keydown={handleKeydown} />
 
 {#if open}
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-noninteractive-element-interactions -->

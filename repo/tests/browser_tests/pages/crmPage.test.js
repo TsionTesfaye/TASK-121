@@ -386,3 +386,156 @@ describe('CRMPage — role-based operations visibility', () => {
     expect(screen.queryByRole('button', { name: /add rating/i })).toBeNull();
   });
 });
+
+// ── Real data-path: create → verify in list ────────────────────────────────
+
+describe('CRMPage — created customer appears in list (real data path)', () => {
+  it('list shows "No customers found" before creation', async () => {
+    render(CRMPage);
+    await waitFor(() => {
+      expect(screen.getByText(/no customers found/i)).toBeTruthy();
+    }, { timeout: 3000 });
+  });
+
+  it('after creating customer via UI form, name appears in the list', async () => {
+    render(CRMPage);
+    fireEvent.click(screen.getByText('+ New Customer'));
+    await waitFor(() => screen.getByText('New Customer'));
+
+    const nameInput = screen.queryByPlaceholderText(/customer name is required/i) ??
+                      screen.getAllByRole('textbox')[0];
+    await fireEvent.input(nameInput, { target: { value: 'Diana Real' } });
+
+    const reasonInput = screen.getByPlaceholderText(/why is this customer/i);
+    await fireEvent.input(reasonInput, { target: { value: 'New customer for real data test' } });
+
+    const createBtn = screen.getByRole('button', { name: /^create$/i });
+    await fireEvent.click(createBtn);
+
+    // Modal closes and list refreshes — customer must appear in the list
+    await waitFor(() => {
+      expect(screen.getByText('Diana Real')).toBeTruthy();
+    }, { timeout: 5000 });
+  });
+
+  it('two seeded customers both appear in the list', async () => {
+    await customerService.createCustomer({
+      organizationId: ORG_ID,
+      name: 'Eve Alpha',
+      actorId: adminUser.id,
+      reasonNote: 'Real data list test',
+    });
+    await customerService.createCustomer({
+      organizationId: ORG_ID,
+      name: 'Frank Beta',
+      actorId: adminUser.id,
+      reasonNote: 'Real data list test',
+    });
+
+    render(CRMPage);
+    await waitFor(() => {
+      expect(screen.getByText('Eve Alpha')).toBeTruthy();
+      expect(screen.getByText('Frank Beta')).toBeTruthy();
+    }, { timeout: 3000 });
+  });
+});
+
+// ── Negative authorization: analyst cannot perform write ops ───────────────
+
+describe('CRMPage — analyst service-level negative authorization', () => {
+  it('adjustPoints throws permission error for analyst role', async () => {
+    // Seed a customer as admin
+    const customer = await customerService.createCustomer({
+      organizationId: ORG_ID,
+      name: 'Auth Guard Customer',
+      points: 10,
+      actorId: adminUser.id,
+      reasonNote: 'Auth guard test',
+    });
+
+    // Switch to analyst role — analysts cannot adjust points
+    authService._currentUser = {
+      ...authService._currentUser,
+      role: ROLES.ANALYST,
+      organizationNodeId: ORG_ID,
+    };
+
+    await expect(
+      customerService.adjustPoints(customer.id, 5, authService._currentUser.id, 'Analyst attempt')
+    ).rejects.toThrow(/permission|unauthorized|forbidden|not allowed/i);
+
+    // Restore admin role for afterEach cleanup
+    authService._currentUser = {
+      ...authService._currentUser,
+      role: ROLES.ADMINISTRATOR,
+    };
+  });
+});
+
+// ── Side-effect: getByOrg error leaves customer list empty ────────────────
+
+describe('CRMPage — error state side-effects', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('getByOrg error: toast store has error AND no customer rows visible', async () => {
+    vi.spyOn(
+      (await import('../../../src/services/CustomerService.js')).customerService,
+      'getByOrg',
+    ).mockRejectedValue(new Error('DB unavailable'));
+
+    render(CRMPage);
+
+    await waitFor(() => {
+      const t = get(toast);
+      expect(t?.type).toBe('error');
+      expect(t?.message).toBe('DB unavailable');
+    }, { timeout: 3000 });
+
+    // Side-effect: customer list is empty — no rows rendered despite possible pre-seeded data
+    expect(screen.queryByText('Alice Smith')).toBeNull();
+    expect(screen.queryByText(/no customers found/i)).toBeTruthy(); // empty state shown when list fails to load
+  });
+});
+
+// ── Denied-action: guest cannot create customers ───────────────────────────
+
+describe('CRMPage — guest denied-action assertions', () => {
+  it('guest calling createCustomer is rejected at the service layer', async () => {
+    authService._currentUser = {
+      ...authService._currentUser,
+      role: 'guest',
+    };
+
+    await expect(
+      customerService.createCustomer({
+        organizationId: ORG_ID,
+        name: 'Guest Created Customer',
+        actorId: authService._currentUser.id,
+        reasonNote: 'Guest create attempt should be blocked',
+      })
+    ).rejects.toThrow(/permission|unauthorized|forbidden|not allowed/i);
+
+    authService._currentUser = { ...authService._currentUser, role: 'administrator' };
+  });
+
+  it('reviewer calling adjustPoints is rejected at the service layer', async () => {
+    const customer = await customerService.createCustomer({
+      organizationId: ORG_ID,
+      name: 'Reviewer Target',
+      points: 20,
+      actorId: adminUser.id,
+      reasonNote: 'Reviewer denied-action test',
+    });
+
+    authService._currentUser = {
+      ...authService._currentUser,
+      role: 'reviewer',
+    };
+
+    await expect(
+      customerService.adjustPoints(customer.id, 10, authService._currentUser.id, 'Reviewer attempt')
+    ).rejects.toThrow(/permission|unauthorized|forbidden|not allowed/i);
+
+    authService._currentUser = { ...authService._currentUser, role: 'administrator' };
+  });
+});

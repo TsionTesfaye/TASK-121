@@ -7,6 +7,7 @@
   import { restoreSelectedStore, persistSelectedStore, clearOrgPreferences, selectedStore, orgTree } from './app/stores/org.js';
   import { authService } from './services/AuthService.js';
   import { bootstrapService } from './services/BootstrapService.js';
+  import { seedService } from './services/SeedService.js';
   import { schedulerService } from './services/SchedulerService.js';
   import { notificationService } from './services/NotificationService.js';
   import { ticketService } from './services/TicketService.js';
@@ -59,11 +60,19 @@
       await initDB();
       dbReady = true;
 
-      // First-run check: if no users exist, redirect to bootstrap setup.
+      // First-run: auto-seed demo accounts so testers can skip the bootstrap UI.
       const bootstrapped = await bootstrapService.isBootstrapped();
       if (!bootstrapped) {
-        navigate('/bootstrap');
+        try {
+          await seedService.seedDemoAccounts();
+        } catch (seedErr) {
+          console.warn('[App] Auto-seed failed, falling back to manual bootstrap:', seedErr?.message);
+          navigate('/bootstrap');
+          return;
+        }
       }
+      // Always land on login if no session is active.
+      navigate('/login');
     } catch (err) {
       dbError = err.message;
       console.error('[App] Startup error:', err.message);

@@ -206,21 +206,13 @@ describe('MessagesPage — template deletion', () => {
 
 // ── Subscription tab: uses subEventType only ──────────────────────────────────
 
-describe('MessagesPage — subscription event type selection', () => {
-  afterEach(() => vi.restoreAllMocks());
+describe('MessagesPage — subscription event type selection (real data path)', () => {
+  it('subscribing via the form persists the subscription to IndexedDB with the correct event type', async () => {
+    const validEventType = EVENT_TYPES.ORDER_STATUS_CHANGED;
 
-  it('subscribe call receives the event type chosen from the subscriptions select, not simEventType', async () => {
-    // Use a valid event type value that actually exists as a select option
-    const validEventType = EVENT_TYPES.ORDER_STATUS_CHANGED; // 'order_status'
-
-    const subscribeSpy = vi.spyOn(notificationService, 'subscribe').mockResolvedValue({
-      id: 'sub-test-001',
-      userId: adminUser.id,
-      eventType: validEventType,
-      channelId: null,
-      organizationId: 'org-messages-test',
-      filters: {},
-    });
+    // Verify no subscription exists yet (data side-effect baseline)
+    const subsBefore = await notificationService.getSubscriptions(adminUser.id);
+    const countBefore = subsBefore.length;
 
     render(MessagesPage);
 
@@ -228,25 +220,111 @@ describe('MessagesPage — subscription event type selection', () => {
     await waitFor(() => screen.getByRole('button', { name: /subscriptions/i }));
     fireEvent.click(screen.getByRole('button', { name: /subscriptions/i }));
 
-    // Select a valid event type from the subscriptions form select
+    // Select event type from the subscriptions form
     await waitFor(() => screen.getByRole('combobox'), { timeout: 2000 });
     const selects = screen.getAllByRole('combobox');
-    // First combobox in the subscriptions form is the event type select
     fireEvent.change(selects[0], { target: { value: validEventType } });
 
     // Click Subscribe
     await waitFor(() => screen.getByRole('button', { name: /^subscribe$/i }));
     fireEvent.click(screen.getByRole('button', { name: /^subscribe$/i }));
 
+    // Data side-effect: subscription is persisted to IndexedDB with the chosen event type
+    await waitFor(async () => {
+      const subsAfter = await notificationService.getSubscriptions(adminUser.id);
+      expect(subsAfter.length).toBe(countBefore + 1);
+      // The new subscription must carry the event type chosen in the subscriptions form,
+      // not the default value from the simulate tab's separate binding.
+      expect(subsAfter[subsAfter.length - 1].eventType).toBe(validEventType);
+    }, { timeout: 5000 });
+  });
+});
+
+// ── Real data-path: template created via UI appears in list ───────────────
+
+describe('MessagesPage — template created via form appears in list (real data path)', () => {
+  it('template name appears in templates tab after form submission', async () => {
+    render(MessagesPage);
+    await waitFor(() => screen.getByRole('button', { name: /templates/i }));
+    fireEvent.click(screen.getByRole('button', { name: /templates/i }));
+    await waitFor(() => screen.getByText('+ New Template'), { timeout: 2000 });
+    fireEvent.click(screen.getByText('+ New Template'));
+
+    // Fill template name
     await waitFor(() => {
-      expect(subscribeSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ eventType: validEventType }),
-      );
+      expect(screen.queryByRole('dialog') ?? screen.queryByText('New Template')).toBeTruthy();
+    }, { timeout: 2000 });
+
+    const inputs = screen.getAllByRole('textbox');
+    // First textbox = template name
+    await fireEvent.input(inputs[0], { target: { value: 'Real UI Template' } });
+
+    // Body textarea — use querySelector for textarea
+    const bodyArea = document.querySelector('textarea');
+    if (bodyArea) {
+      await fireEvent.input(bodyArea, { target: { value: 'Hello {name}, real body text here.' } });
+    }
+
+    const createBtn = screen.getByRole('button', { name: /^create$/i });
+    await fireEvent.click(createBtn);
+
+    // Template should appear in the list
+    await waitFor(() => {
+      expect(screen.getByText('Real UI Template')).toBeTruthy();
+    }, { timeout: 5000 });
+  });
+
+  it('two seeded templates both appear in the templates list', async () => {
+    await templateService.createTemplate({
+      organizationId: ORG_ID,
+      name: 'Template One',
+      body: 'Body one {{var}}',
+      isCompact: false,
+      actorId: adminUser.id,
+    });
+    await templateService.createTemplate({
+      organizationId: ORG_ID,
+      name: 'Template Two',
+      body: 'Body two {{var}}',
+      isCompact: false,
+      actorId: adminUser.id,
+    });
+
+    render(MessagesPage);
+    await waitFor(() => screen.getByRole('button', { name: /templates/i }));
+    fireEvent.click(screen.getByRole('button', { name: /templates/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Template One')).toBeTruthy();
+      expect(screen.getByText('Template Two')).toBeTruthy();
+    }, { timeout: 3000 });
+  });
+});
+
+// ── Real data-path: notification persists after mark-read ─────────────────
+
+describe('MessagesPage — mark-read removes button but notification stays visible (real data path)', () => {
+  beforeEach(async () => {
+    await notificationService.notifyUser(adminUser.id, {
+      type: 'success',
+      title: 'Persist After Read',
+      body: 'This notification stays in inbox.',
+    });
+  });
+
+  it('notification title remains visible after marking as read', async () => {
+    render(MessagesPage);
+    await waitFor(() => screen.getByText('Persist After Read'), { timeout: 3000 });
+
+    // Mark it read
+    fireEvent.click(screen.getByRole('button', { name: /mark read/i }));
+
+    await waitFor(() => {
+      // Mark read button gone
+      expect(screen.queryByRole('button', { name: /mark read/i })).toBeNull();
     }, { timeout: 3000 });
 
-    // Must NOT have used simEventType — simEventType defaults to the first option but
-    // is only for the simulate tab; subEventType is the subscriptions tab binding.
-    const callArg = subscribeSpy.mock.calls[0][0];
-    expect(callArg.eventType).toBe(validEventType);
+    // Notification title still visible
+    expect(screen.getByText('Persist After Read')).toBeTruthy();
   });
 });

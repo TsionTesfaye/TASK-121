@@ -182,3 +182,123 @@ describe('AdminPage — deactivate user', () => {
 
   afterEach(() => vi.restoreAllMocks());
 });
+
+// ── Real data-path: create user → appears in list ─────────────────────────
+
+describe('AdminPage — created user appears in list (real data path)', () => {
+  it('new user appears in the list after form submission', async () => {
+    render(AdminPage);
+    await waitFor(() => screen.getByText('+ New User'), { timeout: 3000 });
+    fireEvent.click(screen.getByText('+ New User'));
+    await waitFor(() => screen.getByText('New User'), { timeout: 2000 });
+
+    // Fill username — the input has no placeholder, query by position in modal
+    await waitFor(() => screen.getAllByRole('textbox').length > 0);
+    const usernameInput = screen.getAllByRole('textbox')[0];
+    await fireEvent.input(usernameInput, { target: { value: 'real_new_user' } });
+
+    // Fill password (type="password" inputs won't appear in getAllByRole('textbox'))
+    const passwordInput = document.querySelector('input[type="password"]');
+    await fireEvent.input(passwordInput, { target: { value: 'NewUser@1234' } });
+
+    // Use administrator role — no organizationNodeId required
+    const roleSelect = document.querySelector('select');
+    if (roleSelect) {
+      await fireEvent.change(roleSelect, { target: { value: 'administrator' } });
+    }
+
+    const createBtn = screen.getByRole('button', { name: /^create user$/i });
+    await fireEvent.click(createBtn);
+
+    // After creation, the user should appear in the list
+    await waitFor(() => {
+      expect(screen.getByText('real_new_user')).toBeTruthy();
+    }, { timeout: 5000 });
+  });
+
+  it('deactivated user shows inactive status in the list', async () => {
+    await authService.createUser({
+      username: 'inactive_target',
+      password: 'Target@12345',
+      role: 'store_manager',
+      organizationNodeId: adminUser.organizationNodeId,
+    });
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(AdminPage);
+    await waitFor(() => screen.getByText('inactive_target'), { timeout: 3000 });
+
+    const deactivateBtn = screen.getByRole('button', { name: /^deactivate$/i });
+    await fireEvent.click(deactivateBtn);
+
+    await waitFor(() => {
+      // After deactivation the user should be marked inactive in the UI
+      expect(screen.getByText(/inactive/i)).toBeTruthy();
+    }, { timeout: 3000 });
+
+    vi.restoreAllMocks();
+  });
+});
+
+// ── Side-effect: error leaves user list empty ──────────────────────────────
+
+describe('AdminPage — error state side-effects', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('listUsers error: toast store shows error AND user list remains empty', async () => {
+    vi.spyOn(authService, 'listUsers').mockRejectedValue(new Error('Permission denied'));
+    render(AdminPage);
+
+    await waitFor(() => {
+      const t = get(toast);
+      expect(t?.type).toBe('error');
+      expect(t?.message).toBe('Permission denied');
+    }, { timeout: 3000 });
+
+    // Side-effect: no user rows should be rendered since the load failed
+    expect(screen.queryByText('site_admin')).toBeNull();
+  });
+});
+
+// ── Denied-action: non-admin cannot create users ───────────────────────────
+
+describe('AdminPage — denied-action assertions', () => {
+  it('store_manager calling createUser is rejected at the service layer', async () => {
+    // Switch current user to store_manager role
+    authService._currentUser = {
+      ...authService._currentUser,
+      role: 'store_manager',
+    };
+
+    await expect(
+      authService.createUser({
+        username: 'forbidden_user',
+        password: 'Forbidden@1234',
+        role: 'analyst',
+        organizationNodeId: adminUser.organizationNodeId,
+      })
+    ).rejects.toThrow(/permission|unauthorized|forbidden|not allowed/i);
+
+    // Restore admin role
+    authService._currentUser = { ...authService._currentUser, role: 'administrator' };
+  });
+
+  it('analyst calling createUser is rejected at the service layer', async () => {
+    authService._currentUser = {
+      ...authService._currentUser,
+      role: 'analyst',
+    };
+
+    await expect(
+      authService.createUser({
+        username: 'analyst_created',
+        password: 'Analyst@1234',
+        role: 'reviewer',
+        organizationNodeId: adminUser.organizationNodeId,
+      })
+    ).rejects.toThrow(/permission|unauthorized|forbidden|not allowed/i);
+
+    authService._currentUser = { ...authService._currentUser, role: 'administrator' };
+  });
+});

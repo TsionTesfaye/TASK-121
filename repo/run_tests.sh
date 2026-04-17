@@ -1,20 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# RetailOps Console — test runner
+# RetailOps Console — Docker-based test runner (recommended)
 # Usage: ./run_tests.sh
-# Runs the full Vitest suite (unit, integration, simulation, E2E, component).
+#
+# Runs the full Vitest suite inside Docker.
+# No local Node install required.
 
 cd "$(dirname "$0")"
 
-if ! command -v node &>/dev/null; then
-  echo "ERROR: node not found. Node 18 LTS is required." >&2
+if command -v docker &>/dev/null; then
+  docker-compose up --build --abort-on-container-exit test
+else
+  echo "ERROR: Docker not found. Install Docker or run: npm run test" >&2
   exit 1
 fi
-
-if [ ! -d node_modules ]; then
-  echo "Installing dependencies..."
-  npm ci
-fi
-
-npm run test

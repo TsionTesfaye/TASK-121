@@ -20,8 +20,9 @@ npm-debug.log*
 # Coverage
 coverage/
 
-# Vite cache
+# Vite / Vitest cache
 .vite/
+.vitest/
 
 # IDE
 .idea/
@@ -30,5 +31,14 @@ coverage/
 *.swo
 *~
 
-# Test artifacts
-.vitest/
+# Playwright artifacts
+test-results/
+playwright-report/
+*.playwright/
+
+# Claude Code project files
+.claude/
+
+# Lock files (keep package-lock.json, ignore yarn/pnpm)
+yarn.lock
+pnpm-lock.yaml

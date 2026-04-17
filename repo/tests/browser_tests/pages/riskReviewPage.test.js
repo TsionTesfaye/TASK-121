@@ -296,18 +296,20 @@ describe('RiskReviewPage — bidding heuristic', () => {
     }, { timeout: 3000 });
   });
 
-  it('createCaseFromHeuristic is called and inbox refreshes when "Create Risk Case" is clicked', async () => {
+  it('Create Risk Case writes real case to IndexedDB — inbox count increases', async () => {
+    // evaluateBiddingHeuristics is mocked: no real bid items exist in the test DB.
+    // createCaseFromHeuristic and getInbox are NOT mocked — they hit real IndexedDB.
     vi.spyOn(riskReviewService, 'evaluateBiddingHeuristics').mockResolvedValue({
       flagged: true,
       reason: 'Shill bidding detected',
       evidence: {},
     });
-    const createSpy = vi.spyOn(riskReviewService, 'createCaseFromHeuristic').mockResolvedValue({
-      id: 'case-heur-001',
-      sourceType: 'bid_heuristic',
-      status: 'open',
-    });
-    const getInboxSpy = vi.spyOn(riskReviewService, 'getInbox').mockResolvedValue([]);
+
+    // Capture inbox size before the heuristic case is created
+    const inboxBefore = await riskReviewService.getInbox(
+      authService._currentUser.organizationNodeId,
+    );
+    const countBefore = inboxBefore.length;
 
     render(RiskReviewPage);
 
@@ -327,11 +329,82 @@ describe('RiskReviewPage — bidding heuristic', () => {
     await waitFor(() => screen.getByRole('button', { name: /create risk case/i }), { timeout: 3000 });
     fireEvent.click(screen.getByRole('button', { name: /create risk case/i }));
 
-    await waitFor(() => {
-      expect(createSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ itemId: 'item-xyz' }),
+    // Data side-effect: inbox in IndexedDB now has one more entry
+    await waitFor(async () => {
+      const inboxAfter = await riskReviewService.getInbox(
+        authService._currentUser.organizationNodeId,
       );
-      expect(getInboxSpy).toHaveBeenCalled();
+      expect(inboxAfter.length).toBe(countBefore + 1);
+    }, { timeout: 5000 });
+  });
+});
+
+// ── Real data-path: createCaseFromHeuristic creates real case ─────────────
+
+describe('RiskReviewPage — createCaseFromHeuristic real case creation', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('clicking Create Risk Case creates a real case that appears in inbox', async () => {
+    // evaluateBiddingHeuristics is mocked because we have no real bid data in the DB.
+    // createCaseFromHeuristic and getInbox are NOT mocked — they hit real IndexedDB.
+    vi.spyOn(riskReviewService, 'evaluateBiddingHeuristics').mockResolvedValue({
+      flagged: true,
+      reason: 'Shill bidding pattern detected',
+      evidence: { linkedAccountCount: 3 },
+    });
+
+    render(RiskReviewPage);
+
+    // Navigate to the Rules tab
+    await waitFor(() => screen.getByRole('button', { name: /rules/i }), { timeout: 3000 });
+    fireEvent.click(screen.getByRole('button', { name: /rules/i }));
+
+    await waitFor(() => screen.getByText('Bidding Heuristic Analysis'), { timeout: 2000 });
+
+    // Enter an item ID and run the heuristic
+    const itemInput = screen.getByPlaceholderText('item-uuid');
+    await fireEvent.input(itemInput, { target: { value: 'item-real-001' } });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /run heuristic/i })).not.toBeDisabled();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /run heuristic/i }));
+
+    // "Create Risk Case" button appears because result is flagged
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /create risk case/i })).toBeTruthy();
+    }, { timeout: 3000 });
+
+    fireEvent.click(screen.getByRole('button', { name: /create risk case/i }));
+
+    // The real case is written to IndexedDB; the inbox refreshes.
+    // Navigate back to inbox and verify the new case appears.
+    await waitFor(() => screen.getByRole('button', { name: /inbox/i }), { timeout: 3000 });
+    fireEvent.click(screen.getByRole('button', { name: /inbox/i }));
+
+    await waitFor(() => {
+      // bid_heuristic cases show 'bid_heuristic' as their source type in the inbox list
+      expect(
+        screen.queryByText('bid_heuristic') ?? screen.queryByText(/bid/i)
+      ).toBeTruthy();
+    }, { timeout: 5000 });
+  });
+
+  it('case assign changes displayed status to in_review (real service path)', async () => {
+    const riskCase = await seedCase();
+
+    // Assign the case using the real service
+    authService._currentUser = { ...authService._currentUser, role: 'administrator' };
+    await riskReviewService.assignCase(riskCase.id, adminUser.id, adminUser.id);
+    authService._currentUser = { ...authService._currentUser };
+
+    render(RiskReviewPage);
+    await waitFor(() => screen.getByText('order'), { timeout: 3000 });
+    fireEvent.click(screen.getByText('order'));
+
+    await waitFor(() => {
+      // Status badge should now show 'in_review'
+      expect(screen.getByText('in_review')).toBeTruthy();
     }, { timeout: 3000 });
   });
 });
